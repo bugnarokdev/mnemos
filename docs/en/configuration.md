@@ -26,7 +26,7 @@ Defaults are the public testnet endpoints.
 | `walrus_publisher` | `https://publisher.walrus-testnet.walrus.space` |
 | `walrus_aggregator` | `https://aggregator.walrus-testnet.walrus.space` |
 | `epochs` | `5` |
-| `package_id` | empty until `hermes mnemos init` |
+| `package_id` | empty until `hermes mnemos init`; after a restore it is read from the MemoryIndex type on Sui |
 | `index_object_id` | empty until init, or set to an existing object for restore |
 
 `sui_rpc` is the gRPC fullnode. JSON-RPC on the public fullnodes is retired. A later mainnet deployment can point `sui_rpc` at another gRPC endpoint, including a dRPC URL, without a code change.
@@ -45,5 +45,6 @@ The dashboard panel is `config_schema.py`. It declares `CONFIG_SCHEMA` as plain 
 | `hermes mnemos init --bytecode FILE` | Faucet, publish, create the owned object. |
 | `hermes mnemos flush` | Commit the outbox. |
 | `hermes mnemos restore --object-id 0x...` | Rebuild the local cache. |
+| `hermes mnemos history [--verify] [--object-id 0x...] [--json]` | List the snapshots; `--verify` checks hashes, links, and signatures against Walrus without the secret. Exit code 1 on any failure. |
 
 These `hermes mnemos` commands appear only when `memory.provider` is `mnemos`.

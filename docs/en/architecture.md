@@ -30,6 +30,7 @@
 - `mnemos/provider.py` implements `MemoryProvider`. Every `register()` call constructs a new instance. Paths come from the `hermes_home` argument, not from a hardcoded home.
 - `mnemos/engine.py` uses the native module when `import mnemos_core` succeeds.
 - `mnemos/py_engine.py` is the fallback: same snapshot bytes, Walrus HTTP, and Sui gRPC simulate-then-execute. Checkpoints commit in this mode.
+- `mnemos/history.py` reads the snapshot list from the MemoryIndex and verifies each version (blob sha256, previous-hash link, Ed25519 signature) for `hermes mnemos history --verify`.
 - `native/` is the PyO3 crate. It owns SQLite, XChaCha20-Poly1305, Ed25519, Walrus HTTP, the faucet proof-of-work, and Sui transactions (`sui-sdk-types`, `sui-crypto`, `sui-transaction-builder`, `sui-rpc`).
 - `move/MemoryIndex` is the on-chain index.
 
