@@ -34,7 +34,7 @@ Les valeurs par défaut sont les points de terminaison publics du testnet.
 
 `epochs` est le nombre d'époques Walrus pendant lesquelles le publisher conserve chaque blob. Les époques de testnet sont courtes et le réseau peut être effacé. Ne traitez pas ces blobs comme durables.
 
-Le panneau du tableau de bord est `config_schema.py`. Il importe les types de configuration mémoire de Hermes, ce qui est la manière prévue de déclarer le panneau. `hermes plugins validate` peut avertir que ces imports sont privés ; le plugin se charge quand même.
+Le panneau du tableau de bord est `config_schema.py`. Il déclare `CONFIG_SCHEMA` comme des données simples ; Hermes en reconstruit ses types de panneau, donc le fichier n'importe pas d'internes Hermes.
 
 ## Commandes
 

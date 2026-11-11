@@ -72,7 +72,7 @@ def _wheel_name() -> str:
     elif system == "darwin" and machine in {"arm64", "aarch64"}:
         tag = "macosx_11_0_arm64"
     elif system == "darwin" and machine == "x86_64":
-        tag = "macosx_11_0_x86_64"
+        tag = "macosx_10_12_x86_64"
     elif system == "windows" and machine in {"amd64", "x86_64"}:
         tag = "win_amd64"
     else:

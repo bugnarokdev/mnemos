@@ -28,10 +28,6 @@ The fact is encrypted at rest off-box, but recall reads the local cache. After r
 
 `native/target/` contains build artifacts. They are gitignored and must not be committed. Validate a clean tree. A warning that names `libmnemos_core.so` means a build directory is still inside the plugin path.
 
-## `validate` warns about `plugins.memory.config_schema`
-
-`config_schema.py` imports that module because the dashboard loads `CONFIG_SCHEMA` from it. The import is the documented panel API. The warning does not fail validation.
-
 ## Doctor says the index is missing
 
 `index_object_id` is empty, or GraphQL cannot see the object yet. `init` waits for the object after the transaction is in a checkpoint. If you pasted an id, check the network is `testnet` and the RPC and GraphQL URLs match that network.

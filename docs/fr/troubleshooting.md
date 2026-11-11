@@ -28,10 +28,6 @@ Le fait est chiffré au repos hors de la machine, mais le rappel lit le cache lo
 
 `native/target/` contient des artefacts de compilation. Ils sont ignorés par git et ne doivent pas être commités. Validez un arbre propre. Un avertissement qui nomme `libmnemos_core.so` signifie qu'un répertoire de build est encore dans le chemin du plugin.
 
-## `validate` avertit sur `plugins.memory.config_schema`
-
-`config_schema.py` importe ce module parce que le tableau de bord charge `CONFIG_SCHEMA` depuis lui. L'import est l'API de panneau documentée. L'avertissement ne fait pas échouer la validation.
-
 ## Le diagnostic dit que l'index manque
 
 `index_object_id` est vide, ou GraphQL ne voit pas encore l'objet. `init` attend l'objet après l'inclusion de la transaction dans un checkpoint. Si vous avez collé un identifiant, vérifiez que le réseau est `testnet` et que les URL RPC et GraphQL correspondent à ce réseau.

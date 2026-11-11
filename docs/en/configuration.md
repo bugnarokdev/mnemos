@@ -34,7 +34,7 @@ Defaults are the public testnet endpoints.
 
 `epochs` is how many Walrus epochs the publisher should store each blob. Testnet epochs are short and the network can be wiped. Do not treat testnet blobs as durable.
 
-The dashboard panel is `config_schema.py`. It imports Hermes's memory config types, which is the supported way to declare the panel. `hermes plugins validate` may warn that those imports are private; the plugin still loads.
+The dashboard panel is `config_schema.py`. It declares `CONFIG_SCHEMA` as plain data; Hermes rebuilds that record into its panel types, so the file does not import Hermes internals.
 
 ## Commands
 
