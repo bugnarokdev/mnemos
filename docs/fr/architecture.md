@@ -27,10 +27,11 @@
 
 - `plugin.yaml`, `__init__.py`, `cli.py`, `config_schema.py` sont les surfaces Hermes.
 - `mnemos/provider.py` implémente `MemoryProvider`. Chaque `register()` construit une nouvelle instance. Les chemins viennent de l'argument `hermes_home`, pas d'un répertoire figé.
-- `mnemos/engine.py` utilise le module natif quand `import mnemos_core` réussit.
+- `mnemos/engine.py` utilise le module natif quand `import mnemos_core` réussit et que le module est en 0.2.2 ou plus (il expose `public_identity`) ; un module plus ancien est ignoré.
 - `mnemos/py_engine.py` est le repli : mêmes octets d'instantané, HTTP Walrus, et gRPC Sui (simulation puis exécution). Les points de contrôle sont validés dans ce mode.
+- `mnemos/chain.py` contient les octets d'instantané et la dérivation des clés (Argon2id, puis HKDF par usage), ainsi que l'ancienne dérivation en lecture seule. `mnemos/sui_client.py` vérifie l'identifiant de chaîne du RPC avant chaque signature.
 - `mnemos/history.py` lit la liste des instantanés du MemoryIndex et vérifie chaque version (sha256 du blob, lien vers le hash précédent, signature Ed25519) pour `hermes mnemos history --verify`.
-- `native/` est la crate PyO3. Elle possède SQLite, XChaCha20-Poly1305, Ed25519, le HTTP Walrus, la preuve de travail du faucet et les transactions Sui (`sui-sdk-types`, `sui-crypto`, `sui-transaction-builder`, `sui-rpc`).
+- `native/` est la crate PyO3. Elle possède SQLite, XChaCha20-Poly1305, Ed25519, le HTTP Walrus, la preuve de travail du faucet et les transactions Sui (`sui-sdk-types`, `sui-crypto`, `sui-transaction-builder`, `sui-rpc`), avec la même dérivation Argon2id (crate `argon2`) et le même contrôle de chaîne testnet.
 - `move/MemoryIndex` est l'index sur la chaîne.
 
 ## Schéma local

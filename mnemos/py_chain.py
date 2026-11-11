@@ -109,6 +109,8 @@ def flush(engine, idem_key: str | None = None) -> dict[str, Any]:
     with engine._lock:
         head = read_chain_fresh(engine, index_id)
         if head["pubkey"] != engine._keys["pubkey"]:
+            if head["pubkey"] == engine._legacy_keys["pubkey"]:
+                raise RuntimeError(chain.LEGACY_READ_ONLY)
             raise RuntimeError("MemoryIndex was signed by a different key than this secret")
         entries = _unsynced(engine)
         if not entries:
@@ -121,6 +123,8 @@ def flush(engine, idem_key: str | None = None) -> dict[str, Any]:
                 "version": head["version"],
                 "blob_id": row["blob_id"] if row else None,
             }
+        # Refuse a non-testnet RPC before uploading anything. execute checks again.
+        _sui().check_rpc(engine._config["sui_rpc"])
         session_id = entries[-1]["session_id"]
         plaintext = chain.canonical_plaintext(entries)
         plain_key = chain.sha256(plaintext).hex()
@@ -246,6 +250,7 @@ def init_chain(engine, modules_json: str) -> dict[str, Any]:
 
     address = engine.sui_address()
     print(f"mnemos: sui address {address}", file=sys.stderr, flush=True)
+    _sui().check_rpc(engine._config["sui_rpc"])
     funded = fund_if_needed(engine._config["faucet_url"], engine._config["graphql_url"], address, 200_000_000)
     print("mnemos: gas ready", file=sys.stderr, flush=True)
     if not engine._config.get("package_id"):

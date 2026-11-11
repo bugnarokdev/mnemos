@@ -82,6 +82,10 @@ def open_engine(db_path: str, secret: str, config: dict):
                     module = None
             else:
                 reason = "native download is opt-in (set MNEMOS_NATIVE_AUTO=1)"
+    if module is not None and not hasattr(module, "public_identity"):
+        # Pre-0.2.2 cores derive keys with the old KDF; never mix them in.
+        reason = "the loaded mnemos_core predates the Argon2id key derivation; using the Python backend"
+        module = None
     if module is not None and forced != "python":
         inner = module.Engine(db_path, secret, json.dumps(config))
         engine = _RustEngine(inner)

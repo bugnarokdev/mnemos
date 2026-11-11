@@ -32,6 +32,14 @@ The fact is encrypted at rest off-box, but recall reads the local cache. After r
 
 `index_object_id` is empty, or GraphQL cannot see the object yet. `init` waits for the object after the transaction is in a checkpoint. If you pasted an id, check the network is `testnet` and the RPC and GraphQL URLs match that network.
 
+## `refusing to sign: ... Mnemos only writes to Sui testnet`
+
+The `sui_rpc` in `mnemos/config.json` did not report the Sui testnet chain id, or could not be reached in time. Nothing was signed or uploaded. Point `sui_rpc` back to `https://fullnode.testnet.sui.io:443` (or another testnet fullnode) and rerun. The entries stay in the local outbox until a flush succeeds.
+
+## `MemoryIndex uses the pre-0.2.2 key derivation and is read-only`
+
+The index was created before Argon2id. Restore and `history --verify` still work; writes do not. Run `hermes mnemos init` to create a new index. See [restore](restore.md#indexes-created-before-022).
+
 ## Checkpoint raised and compaction stopped
 
 That is the API v2 behavior when `compression.checkpoint_required` is true. Fix Walrus or Sui, then retry. The transcript is still uncompressed. With the setting off, Hermes logs the error and compacts anyway.

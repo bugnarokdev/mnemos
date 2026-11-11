@@ -118,8 +118,8 @@ def test_native_download_is_opt_in(monkeypatch, tmp_path):
 
 
 def test_wheel_checksums_are_pinned(monkeypatch):
-    assert set(native_wheel.PINNED_SHA256) == {
-        f"mnemos_core-0.2.0-cp311-abi3-{tag}.whl"
+    names = {
+        f"mnemos_core-{native_wheel.WHEEL_VERSION}-cp311-abi3-{tag}.whl"
         for tag in (
             "macosx_10_12_x86_64",
             "macosx_11_0_arm64",
@@ -128,14 +128,58 @@ def test_wheel_checksums_are_pinned(monkeypatch):
             "win_amd64",
         )
     }
+    # Empty only in the release commit itself: the table is filled right after the tag.
+    assert set(native_wheel.PINNED_SHA256) in (set(), names)
+    assert native_wheel.DEFAULT_RELEASE.endswith("/releases/download/" + native_wheel.RELEASE_TAG)
+    name = f"mnemos_core-{native_wheel.WHEEL_VERSION}-cp311-abi3-win_amd64.whl"
     urls = []
-    monkeypatch.setenv("MNEMOS_NATIVE_BASE", "https://example.invalid")
-    monkeypatch.setattr(native_wheel, "_wheel_name", lambda: "mnemos_core-0.2.0-cp311-abi3-win_amd64.whl")
+    monkeypatch.setitem(native_wheel.PINNED_SHA256, name, "00" * 32)
+    monkeypatch.setattr(native_wheel, "_wheel_name", lambda: name)
     monkeypatch.setattr(native_wheel, "_get", lambda url, timeout: urls.append(url) or b"not the wheel")
     reason = native_wheel.try_install()
     assert reason == "native wheel checksum did not match"
-    assert urls == [native_wheel.DEFAULT_RELEASE + "/mnemos_core-0.2.0-cp311-abi3-win_amd64.whl"]
-    assert hashlib.sha256(b"not the wheel").hexdigest() not in native_wheel.PINNED_SHA256.values()
+    assert urls == [native_wheel.DEFAULT_RELEASE + "/" + name]
+
+
+def test_wheel_extracts_under_hermes_home_and_appends(monkeypatch, tmp_path):
+    import io
+    import sys
+    import zipfile
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as archive:
+        archive.writestr("placeholder.txt", "x")
+    blob = buf.getvalue()
+    name = f"mnemos_core-{native_wheel.WHEEL_VERSION}-cp311-abi3-win_amd64.whl"
+    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    monkeypatch.setitem(sys.modules, "hermes_constants", None)
+    monkeypatch.setitem(native_wheel.PINNED_SHA256, name, hashlib.sha256(blob).hexdigest())
+    monkeypatch.setattr(native_wheel, "_wheel_name", lambda: name)
+    monkeypatch.setattr(native_wheel, "_get", lambda url, timeout: blob)
+    monkeypatch.setattr(sys, "path", list(sys.path))
+    first = sys.path[0]
+    assert native_wheel.try_install().startswith("loaded attested wheel")
+    target = tmp_path / "mnemos" / "native" / native_wheel.RELEASE_TAG
+    assert (target / "placeholder.txt").is_file()
+    assert sys.path[0] == first and sys.path[-1] == str(target)
+
+
+def test_old_native_core_is_ignored(monkeypatch, tmp_path):
+    import sys
+    import types
+
+    from mnemos import engine
+
+    old = types.ModuleType("mnemos_core")
+    old.Engine = lambda *args: (_ for _ in ()).throw(AssertionError("old core must not open"))
+    monkeypatch.delenv("MNEMOS_BACKEND", raising=False)
+    monkeypatch.setitem(sys.modules, "mnemos_core", old)
+    opened = engine.open_engine(str(tmp_path / "db.sqlite"), "harbor-secret", {})
+    try:
+        assert opened.backend == "python"
+        assert "predates" in opened.reason
+    finally:
+        opened.close()
 
 
 def test_package_id_is_recovered_from_index_type(monkeypatch, tmp_path):

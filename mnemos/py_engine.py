@@ -100,6 +100,7 @@ class Engine:
         self._db_path = db_path
         Path(db_path).parent.mkdir(parents=True, exist_ok=True)
         self._keys = chain.derive_keys(secret)
+        self._legacy_keys = chain.derive_legacy_keys(secret)
         self._config = dict(DEFAULTS)
         self._config.update(config or {})
         self._config["epochs"] = int(self._config.get("epochs") or 5)
@@ -232,7 +233,11 @@ class Engine:
         index = graphql_object(self._config["graphql_url"], object_id)
         contents = (((index or {}).get("asMoveObject") or {}).get("contents") or {}).get("json") or {}
         pubkey = chain.as_bytes(contents.get("pubkey"))
-        if pubkey != self._keys["pubkey"]:
+        if pubkey == self._keys["pubkey"]:
+            read_keys = self._keys
+        elif pubkey == self._legacy_keys["pubkey"]:
+            read_keys = self._legacy_keys
+        else:
             raise RuntimeError("MemoryIndex was signed by a different key than this secret")
         snapshots = list(contents.get("snapshots") or [])
         expected_prev = chain.GENESIS_PREV
@@ -255,7 +260,7 @@ class Engine:
                 raise RuntimeError(f"blob {blob_id} does not match the committed content hash")
             if not chain.verify_hash(pubkey, content, signature):
                 raise RuntimeError(f"snapshot signature failed at version {version}")
-            payload = json.loads(chain.open_blob(self._keys["enc_key"], blob).decode("utf-8"))
+            payload = json.loads(chain.open_blob(read_keys["enc_key"], blob).decode("utf-8"))
             for entry in payload.get("entries") or []:
                 restored.append(entry)
             verified.append(
@@ -318,6 +323,8 @@ class Engine:
             "snapshots": len(verified),
             "head": (expected_prev.hex() if snapshots else chain.GENESIS_PREV.hex()),
             "index_object_id": object_id,
+            "kdf": read_keys["kdf"],
+            "read_only": read_keys is self._legacy_keys,
         }
 
     def doctor(self) -> dict[str, Any]:
@@ -428,7 +435,7 @@ def _tokens(query: str) -> list[str]:
 
 
 def http_request(method: str, url: str, data: bytes | None = None, timeout: float = 30, headers: dict | None = None):
-    merged = {"User-Agent": "mnemos/0.2.0"}
+    merged = {"User-Agent": "mnemos/0.2.2"}
     if headers:
         merged.update(headers)
     req = urllib.request.Request(url, data=data, method=method, headers=merged)

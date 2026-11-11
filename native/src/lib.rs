@@ -135,6 +135,22 @@ fn open_blob_text(secret: &str, blob_hex: &str) -> PyResult<String> {
     String::from_utf8(plain).map_err(py_err)
 }
 
+/// Public identity derived from a secret, for cross-backend checks.
+#[pyfunction]
+fn public_identity(secret: &str) -> PyResult<String> {
+    use sui_crypto::ed25519::Ed25519PrivateKey;
+    let keys = chain::derive_keys(secret).map_err(py_err)?;
+    let legacy = chain::derive_legacy_keys(secret).map_err(py_err)?;
+    let sui = Ed25519PrivateKey::new(keys.sui_seed).public_key().derive_address();
+    Ok(serde_json::json!({
+        "kdf": "argon2id",
+        "pubkey_hex": hex::encode(keys.pubkey),
+        "sui_address": sui.to_string(),
+        "legacy_pubkey_hex": hex::encode(legacy.pubkey),
+    })
+    .to_string())
+}
+
 fn parse_hex32(value: &str) -> PyResult<[u8; 32]> {
     let bytes = hex::decode(value).map_err(py_err)?;
     bytes
@@ -148,5 +164,6 @@ fn mnemos_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(content_hash_hex, m)?)?;
     m.add_function(wrap_pyfunction!(seal_blob_hex, m)?)?;
     m.add_function(wrap_pyfunction!(open_blob_text, m)?)?;
+    m.add_function(wrap_pyfunction!(public_identity, m)?)?;
     Ok(())
 }

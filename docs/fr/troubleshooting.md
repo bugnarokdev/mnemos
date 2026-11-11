@@ -32,6 +32,14 @@ Le fait est chiffré au repos hors de la machine, mais le rappel lit le cache lo
 
 `index_object_id` est vide, ou GraphQL ne voit pas encore l'objet. `init` attend l'objet après l'inclusion de la transaction dans un checkpoint. Si vous avez collé un identifiant, vérifiez que le réseau est `testnet` et que les URL RPC et GraphQL correspondent à ce réseau.
 
+## `refusing to sign: ... Mnemos only writes to Sui testnet`
+
+Le `sui_rpc` de `mnemos/config.json` n'a pas annoncé l'identifiant de chaîne de Sui testnet, ou n'a pas répondu à temps. Rien n'a été signé ni envoyé. Remettez `sui_rpc` sur `https://fullnode.testnet.sui.io:443` (ou un autre nœud testnet) et relancez. Les entrées restent dans la file locale jusqu'à un flush réussi.
+
+## `MemoryIndex uses the pre-0.2.2 key derivation and is read-only`
+
+L'index a été créé avant Argon2id. La restauration et `history --verify` fonctionnent toujours, pas les écritures. Lancez `hermes mnemos init` pour créer un nouvel index. Voir [restauration](restore.md#index-créés-avant-022).
+
 ## Le point de contrôle a levé une erreur et le compactage s'est arrêté
 
 C'est le comportement de l'API v2 quand `compression.checkpoint_required` est vrai. Réparez Walrus ou Sui, puis réessayez. La transcription n'est pas compactée. Avec le réglage désactivé, Hermes journalise l'erreur et compacte quand même.

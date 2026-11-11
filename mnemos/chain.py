@@ -3,15 +3,23 @@
 A snapshot's content hash is SHA-256 over a versioned preimage that binds the
 previous hash, the encrypted blob, the chain version, the session id, and the
 Walrus blob id. The snapshot signature is Ed25519 over
-``b"mnemos-snapshot-v1" || content_hash``. The encryption key and the signing
-seed are HKDF-SHA256 outputs of the user secret. Plaintext never includes the
-key.
+``b"mnemos-snapshot-v1" || content_hash``.
+
+Keys: Argon2id stretches the passphrase into a 32-byte master key (64 MiB,
+3 passes, 1 lane, fixed salt ``mnemos-kdf-v2/argon2id``), then one
+HKDF-SHA256 per purpose gives the encryption key, the snapshot signing seed,
+and the Sui gas seed. The salt is fixed because a restore on a new machine has
+only the passphrase. Plaintext never includes the key.
+
+Indexes created before 0.2.2 used a single HKDF over the passphrase. Those keys
+(``derive_legacy_keys``) are only used to read and verify such indexes.
 """
 
 from __future__ import annotations
 
 import hashlib
 import json
+import threading
 from typing import Any
 
 from cryptography.hazmat.primitives import hashes, serialization
@@ -26,18 +34,50 @@ BLOB_VERSION = 1
 BLOB_AAD = b"mnemos-blob-v1"
 GENESIS_PREV = bytes(32)
 
-SALT_ENC = b"mnemos-aead-v1"
+KDF_SALT = b"mnemos-kdf-v2/argon2id"
+KDF_MEMORY_KIB = 65536
+KDF_TIME_COST = 3
+KDF_PARALLELISM = 1
+
 INFO_ENC = b"xchacha20-poly1305"
-SALT_SIGN = b"mnemos-sign-v1"
 INFO_SIGN = b"ed25519-seed"
-SALT_SUI = b"mnemos-sui-v1"
 INFO_SUI = b"ed25519-seed"
+SALTS_V2 = (b"mnemos-aead-v2", b"mnemos-sign-v2", b"mnemos-sui-v2")
+SALTS_LEGACY = (b"mnemos-aead-v1", b"mnemos-sign-v1", b"mnemos-sui-v1")
+
+LEGACY_READ_ONLY = (
+    "MemoryIndex uses the pre-0.2.2 key derivation and is read-only: restore and history still work, "
+    "new writes need a fresh index (`hermes mnemos init`)"
+)
+
+_MASTER_CACHE: dict[bytes, bytes] = {}
+_MASTER_LOCK = threading.Lock()
 
 
-def _hkdf(secret: str, salt: bytes, info: bytes) -> bytes:
-    return HKDF(algorithm=hashes.SHA256(), length=32, salt=salt, info=info).derive(
-        secret.encode("utf-8")
-    )
+def _hkdf(ikm: bytes, salt: bytes, info: bytes) -> bytes:
+    return HKDF(algorithm=hashes.SHA256(), length=32, salt=salt, info=info).derive(ikm)
+
+
+def master_key(secret: str) -> bytes:
+    """Argon2id(secret), computed once per process per secret."""
+    tag = hashlib.sha256(secret.encode("utf-8")).digest()
+    with _MASTER_LOCK:
+        cached = _MASTER_CACHE.get(tag)
+        if cached is None:
+            from argon2.low_level import Type, hash_secret_raw
+
+            cached = hash_secret_raw(
+                secret.encode("utf-8"),
+                KDF_SALT,
+                time_cost=KDF_TIME_COST,
+                memory_cost=KDF_MEMORY_KIB,
+                parallelism=KDF_PARALLELISM,
+                hash_len=32,
+                type=Type.ID,
+                version=19,
+            )
+            _MASTER_CACHE[tag] = cached
+        return cached
 
 
 def _rotl32(value: int, bits: int) -> int:
@@ -116,11 +156,23 @@ def xchacha20poly1305_decrypt(key: bytes, nonce: bytes, ciphertext: bytes, aad: 
 
 
 def derive_keys(secret: str) -> dict[str, Any]:
+    """Current keys: Argon2id master key, then HKDF-SHA256 per purpose."""
     if not secret:
         raise ValueError("Mnemos secret is empty")
-    enc = _hkdf(secret, SALT_ENC, INFO_ENC)
-    sign_seed = _hkdf(secret, SALT_SIGN, INFO_SIGN)
-    sui_seed = _hkdf(secret, SALT_SUI, INFO_SUI)
+    return _keys_from(master_key(secret), SALTS_V2, "argon2id")
+
+
+def derive_legacy_keys(secret: str) -> dict[str, Any]:
+    """Pre-0.2.2 keys (single HKDF over the passphrase). Read and verify only."""
+    if not secret:
+        raise ValueError("Mnemos secret is empty")
+    return _keys_from(secret.encode("utf-8"), SALTS_LEGACY, "legacy")
+
+
+def _keys_from(ikm: bytes, salts: tuple[bytes, bytes, bytes], kdf: str) -> dict[str, Any]:
+    enc = _hkdf(ikm, salts[0], INFO_ENC)
+    sign_seed = _hkdf(ikm, salts[1], INFO_SIGN)
+    sui_seed = _hkdf(ikm, salts[2], INFO_SUI)
     sign_key = Ed25519PrivateKey.from_private_bytes(sign_seed)
     pubkey = sign_key.public_key().public_bytes(
         serialization.Encoding.Raw,
@@ -133,6 +185,7 @@ def derive_keys(secret: str) -> dict[str, Any]:
         "pubkey": pubkey,
         "pubkey_hex": pubkey.hex(),
         "sui_address": sui_address(ed25519_public_from_seed(sui_seed)),
+        "kdf": kdf,
     }
 
 

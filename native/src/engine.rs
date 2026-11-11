@@ -17,6 +17,11 @@ use crate::chain::{
     Entry, Keys, GENESIS_PREV,
 };
 
+const LEGACY_READ_ONLY: &str = "MemoryIndex uses the pre-0.2.2 key derivation and is read-only: restore and history still work, new writes need a fresh index (`hermes mnemos init`)";
+
+/// Genesis checkpoint digest of Sui testnet (`4c78adac` in short form).
+pub const TESTNET_CHAIN_ID: &str = "69WiPg3DAQiwdxfncX6wYQ2siKwAe6L9BZthQea3JNMD";
+
 #[derive(Clone)]
 struct Config {
     sui_rpc: String,
@@ -34,6 +39,8 @@ struct Config {
 pub struct Engine {
     db: Connection,
     keys: Keys,
+    legacy_pubkey: [u8; 32],
+    legacy_enc_key: [u8; 32],
     sui_key: Ed25519PrivateKey,
     address: Address,
     cfg: Config,
@@ -72,6 +79,7 @@ impl Engine {
             std::fs::create_dir_all(parent)?;
         }
         let keys = chain::derive_keys(secret)?;
+        let legacy = chain::derive_legacy_keys(secret)?;
         let cfg = parse_config(config_json);
         let sui_key = load_sui_key(&cfg.sui_private_key, keys.sui_seed)?;
         let address = sui_key.public_key().derive_address();
@@ -107,6 +115,8 @@ impl Engine {
         Ok(Self {
             db,
             keys,
+            legacy_pubkey: legacy.pubkey,
+            legacy_enc_key: legacy.enc_key,
             sui_key,
             address,
             cfg,
@@ -115,6 +125,14 @@ impl Engine {
 
     pub fn pubkey_hex(&self) -> String {
         hex::encode(self.keys.pubkey)
+    }
+
+    fn key_mismatch(&self, pubkey: &[u8; 32]) -> anyhow::Error {
+        if *pubkey == self.legacy_pubkey {
+            anyhow!("{LEGACY_READ_ONLY}")
+        } else {
+            anyhow!("MemoryIndex was signed by a different key than this secret")
+        }
     }
 
     pub fn sui_address(&self) -> String {
@@ -213,7 +231,7 @@ impl Engine {
         }
         let chain = self.read_chain_fresh(&index_id)?;
         if chain.pubkey != self.keys.pubkey {
-            return Err(anyhow!("MemoryIndex was signed by a different key than this secret"));
+            return Err(self.key_mismatch(&chain.pubkey));
         }
         self.adopt_committed(&chain)?;
         let entries = self.unsynced_entries()?;
@@ -233,6 +251,8 @@ impl Engine {
                 "blob_id": blob_id,
             }));
         }
+        // Refuse a non-testnet RPC before uploading anything. execute_tx checks again.
+        block_on(check_rpc(&self.cfg.sui_rpc))?;
         let session_id = entries.last().map(|entry| entry.session_id.clone()).unwrap_or_else(|| "default".into());
         let plaintext = canonical_plaintext(&entries);
         let plain_key = hex::encode(sha256(&plaintext));
@@ -325,9 +345,13 @@ impl Engine {
             return Err(anyhow!("index object id is required"));
         }
         let chain = block_on(read_index(&self.cfg.graphql_url, &object_id))?;
-        if chain.pubkey != self.keys.pubkey {
+        let (enc_key, legacy) = if chain.pubkey == self.keys.pubkey {
+            (self.keys.enc_key, false)
+        } else if chain.pubkey == self.legacy_pubkey {
+            (self.legacy_enc_key, true)
+        } else {
             return Err(anyhow!("MemoryIndex was signed by a different key than this secret"));
-        }
+        };
         let mut expected_prev = GENESIS_PREV;
         let mut expected_version = 1u64;
         let mut restored = Vec::new();
@@ -345,7 +369,7 @@ impl Engine {
             if !verify_hash(&chain.pubkey, &snap.content_hash, &snap.signature) {
                 return Err(anyhow!("snapshot signature failed at version {}", snap.version));
             }
-            let plain = open_blob(&self.keys.enc_key, &blob)?;
+            let plain = open_blob(&enc_key, &blob)?;
             let payload: Value = serde_json::from_slice(&plain).context("snapshot plaintext")?;
             let entries = payload["entries"].as_array().cloned().unwrap_or_default();
             for entry in entries {
@@ -407,6 +431,8 @@ impl Engine {
             "snapshots": verified.len(),
             "head": hex::encode(if chain.snapshots.is_empty() { GENESIS_PREV } else { expected_prev }),
             "index_object_id": object_id,
+            "kdf": if legacy { "legacy" } else { "argon2id" },
+            "read_only": legacy,
         }))
     }
 
@@ -490,6 +516,7 @@ impl Engine {
 
     pub fn init_chain(&mut self, modules_json: &str) -> Result<Value> {
         eprintln!("mnemos: sui address {}", self.address);
+        block_on(check_rpc(&self.cfg.sui_rpc))?;
         let funded = block_on(fund_if_needed(&self.cfg, self.address, 200_000_000))?;
         eprintln!("mnemos: gas ready");
         if self.cfg.package_id.is_empty() {
@@ -1021,8 +1048,36 @@ fn solve_faucet(challenge: &Value) -> Result<(u64, String)> {
     Err(anyhow!("faucet proof-of-work exceeded the 50s challenge window"))
 }
 
+/// Refuse unless the RPC reports the Sui testnet chain id. Errors and
+/// timeouts refuse too.
+async fn require_testnet(client: &mut sui_rpc::Client, rpc: &str) -> Result<()> {
+    let request = sui_rpc::proto::sui::rpc::v2::GetServiceInfoRequest::default();
+    let reply = tokio::time::timeout(Duration::from_secs(15), client.ledger_client().get_service_info(request))
+        .await
+        .map_err(|_| anyhow!("refusing to sign: {rpc} did not report its chain id in time"))?
+        .map_err(|err| anyhow!("refusing to sign: could not read the chain id of {rpc}: {}", err.message()))?
+        .into_inner();
+    let chain_id = reply.chain_id.unwrap_or_default();
+    if chain_id != TESTNET_CHAIN_ID {
+        let name = reply.chain.unwrap_or_default();
+        return Err(anyhow!(
+            "refusing to sign: {rpc} is on chain {} ({}), Mnemos only writes to Sui testnet",
+            if name.is_empty() { "unknown" } else { name.as_str() },
+            if chain_id.is_empty() { "no chain id" } else { chain_id.as_str() }
+        ));
+    }
+    Ok(())
+}
+
+/// `require_testnet` on a fresh client, for a check before any other work.
+async fn check_rpc(rpc: &str) -> Result<()> {
+    let mut client = sui_rpc::Client::new(rpc).map_err(|err| anyhow!("sui rpc: {err}"))?;
+    require_testnet(&mut client, rpc).await
+}
+
 async fn execute_tx(rpc: &str, signer: &Ed25519PrivateKey, tx: TransactionBuilder) -> Result<String> {
     let mut client = sui_rpc::Client::new(rpc).map_err(|err| anyhow!("sui rpc: {err}"))?;
+    require_testnet(&mut client, rpc).await?;
     let built = tx.build(&mut client).await.map_err(|err| anyhow!("transaction build: {err}"))?;
     let digest = built.digest().to_string();
     let signature = signer.sign_transaction(&built).map_err(|err| anyhow!("sign: {err}"))?;

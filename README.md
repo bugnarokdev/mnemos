@@ -127,10 +127,10 @@ English and French are kept in sync.
 
 ## Security at a glance
 
-- `MNEMOS_SECRET` is read only through Hermes `get_secret` and never leaves the process. HKDF-SHA256 derives the encryption key, the snapshot signing key, and (unless `MNEMOS_SUI_PRIVATE_KEY` is set) the Sui gas key.
+- `MNEMOS_SECRET` is read only through Hermes `get_secret` and never leaves the process. Argon2id (64 MiB, 3 passes) stretches it, then HKDF-SHA256 derives the encryption key, the snapshot signing key, and (unless `MNEMOS_SUI_PRIVATE_KEY` is set) the Sui gas key. Indexes created before 0.2.2 restore read-only.
 - Payloads sent to Walrus are ciphertext. The Sui object stores blob ids, hashes, and signatures, not plaintext.
 - The MemoryIndex only accepts an append that links to the current head, increments the version, and carries a valid signature from the key it was created with.
-- This release targets **Sui testnet and Walrus testnet** only. Testnet SUI and WAL have no value.
+- This release targets **Sui testnet and Walrus testnet** only. Testnet SUI and WAL have no value. Before signing anything, Mnemos checks that `sui_rpc` reports the Sui testnet chain id and refuses otherwise, including on errors and timeouts.
 
 Full details: [security](docs/en/security.md).
 
@@ -143,7 +143,7 @@ When a flush, checkpoint, restore, init, doctor, or history runs, Mnemos calls:
 - Sui testnet gRPC `https://fullnode.testnet.sui.io:443`
 - Sui testnet GraphQL `https://graphql.testnet.sui.io/graphql`
 - Sui testnet faucet `https://faucet.testnet.sui.io` during `hermes mnemos init` only
-- Opt-in only: the native wheel from `https://github.com/bugnarokdev/mnemos/releases/download/mnemos-native-v0.2.1/` when `MNEMOS_NATIVE_AUTO=1` and `mnemos_core` is not already installed. The URL is fixed and the wheel must match a sha256 pinned in `mnemos/native_wheel.py`; nothing else is fetched. Off by default.
+- Opt-in only: the native wheel from `https://github.com/bugnarokdev/mnemos/releases/download/mnemos-native-v0.2.2/` when `MNEMOS_NATIVE_AUTO=1` and `mnemos_core` is not already installed. The URL is fixed and the wheel must match a sha256 pinned in `mnemos/native_wheel.py`; nothing else is fetched. Off by default.
 
 Prefetch and recall do not use the network. There is no telemetry.
 

@@ -6,10 +6,10 @@ Les réglages non secrets sont dans `$HERMES_HOME/mnemos/config.json`. Les secre
 
 | Variable | Obligatoire | Rôle |
 | --- | --- | --- |
-| `MNEMOS_SECRET` | oui | Phrase secrète. HKDF-SHA256 dérive la clé XChaCha20-Poly1305, la graine Ed25519 des instantanés et, si aucune clé Sui n'est définie, la clé de gaz. |
+| `MNEMOS_SECRET` | oui | Phrase secrète. Argon2id (64 Mio, 3 passes) l'étire, puis HKDF-SHA256 dérive la clé XChaCha20-Poly1305, la graine Ed25519 des instantanés et, si aucune clé Sui n'est définie, la clé de gaz. Voir [sécurité](security.md). |
 | `MNEMOS_SUI_PRIVATE_KEY` | non | Clé de gaz optionnelle. L'extension Rust accepte le bech32 `suiprivkey`, le base64 du trousseau Sui, ou une graine hexadécimale de 32 octets. Le backend Python accepte une graine hexadécimale de 32 octets. Si vide, les deux dérivent la clé de gaz de `MNEMOS_SECRET`. |
 | `MNEMOS_BACKEND` | non | `python` force l'écrivain gRPC Python. Vide préfère `mnemos_core` quand il peut être chargé. |
-| `MNEMOS_NATIVE_AUTO` | non | Désactivé par défaut. `1` active le téléchargement de la wheel native depuis la release officielle `mnemos-native-v0.2.1` sur `https://github.com/bugnarokdev/mnemos`. L'URL n'est pas modifiable et la wheel doit correspondre à un sha256 épinglé. |
+| `MNEMOS_NATIVE_AUTO` | non | Désactivé par défaut. `1` active le téléchargement de la wheel native depuis la release officielle `mnemos-native-v0.2.2` sur `https://github.com/bugnarokdev/mnemos`. L'URL n'est pas modifiable et la wheel doit correspondre à un sha256 épinglé. |
 
 `hermes memory setup` demande ces deux secrets et `index_object_id`.
 
@@ -20,7 +20,7 @@ Les valeurs par défaut sont les points de terminaison publics du testnet.
 | Clé | Défaut |
 | --- | --- |
 | `network` | `testnet` |
-| `sui_rpc` | `https://fullnode.testnet.sui.io:443` |
+| `sui_rpc` | `https://fullnode.testnet.sui.io:443` (doit annoncer l'identifiant de chaîne de Sui testnet, sinon toute écriture est refusée) |
 | `graphql_url` | `https://graphql.testnet.sui.io/graphql` |
 | `faucet_url` | `https://faucet.testnet.sui.io` |
 | `walrus_publisher` | `https://publisher.walrus-testnet.walrus.space` |

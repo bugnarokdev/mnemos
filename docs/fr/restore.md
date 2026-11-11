@@ -16,7 +16,7 @@ Vous pouvez omettre `--object-id` quand `index_object_id` est déjà dans `mnemo
 La restauration :
 
 1. Lit l'objet via le GraphQL Sui.
-2. Vérifie que la clé publique sur la chaîne correspond à la clé dérivée de ce secret.
+2. Vérifie que la clé publique sur la chaîne correspond à la clé dérivée de ce secret (Argon2id ; pour un index créé avant 0.2.2, l'ancienne clé HKDF, voir plus bas).
 3. Télécharge chaque blob depuis l'agrégateur Walrus, dans l'ordre des versions.
 4. Recalcule le hash de contenu à partir du hash précédent, des octets du blob, de la version, de la session et de l'identifiant de blob.
 5. Compare ce hash à l'objet, vérifie la signature Ed25519, et vérifie que chaque hash précédent égale le hash de contenu précédent.
@@ -30,6 +30,10 @@ Le nouveau profil peut ensuite `prefetch` et `mnemos_recall` sans autre appel r�
 Copiez `MNEMOS_SECRET` vous-même dans le magasin de secrets du nouveau profil. Ne le commitez pas. Seul `index_object_id` est nécessaire : `hermes mnemos restore --object-id` l'enregistre, et le `package_id` est lu dans le type Move de l'objet puis enregistré aussi, donc un `flush` ultérieur fonctionne sans `init`. `hermes mnemos restore` reconstruit `mnemos.sqlite`. L'ancien fichier SQLite n'est pas nécessaire.
 
 `backup_paths()` renvoie une liste vide parce que l'état hors chaîne est sous `HERMES_HOME`, que Hermes archive déjà. La chaîne est la sauvegarde qui survit à la suppression de ce répertoire.
+
+## Index créés avant 0.2.2
+
+Un index créé avant 0.2.2 a une clé publique issue de l'ancienne dérivation (un seul HKDF). `restore` le détecte, déchiffre avec l'ancienne clé et renvoie `"kdf": "legacy", "read_only": true`. `history --verify` fonctionne sans secret. Un `flush` vers cet index est refusé ; lancez `hermes mnemos init` pour créer un nouvel index avec la clé Argon2id. Les nouveaux faits y vont, l'ancien index reste lisible. Détails : [sécurité](security.md#mémoires-créées-avant-022).
 
 ## Limites
 
