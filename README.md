@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="docs/assets/mnemos-cover.jpg" alt="Mnemos: sovereign memory for Hermes Agent" width="100%">
+
 # Mnemos
 
 **Sovereign memory for [Hermes Agent](https://github.com/NousResearch/hermes-agent): encrypted on your machine, stored on Walrus, indexed on Sui, restorable anywhere.**
