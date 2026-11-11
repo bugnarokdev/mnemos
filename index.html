@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mnemos · Sovereign memory for Hermes Agent</title>
+<meta name="description" content="Mnemos is a memory provider plugin for Hermes Agent: encrypted on your machine, ciphertext blobs on Walrus testnet, a MemoryIndex object on Sui testnet, restorable anywhere.">
+<meta name="theme-color" content="#050505">
+<link rel="canonical" href="https://mnemos.rest/">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://mnemos.rest/">
+<meta property="og:title" content="Mnemos · Sovereign memory for Hermes Agent">
+<meta property="og:description" content="Encrypted on your machine. Stored on Walrus. Indexed on Sui. Restore anywhere with your secret and one object id.">
+<meta property="og:image" content="https://mnemos.rest/cover.jpg">
+<meta property="og:image:width" content="1280">
+<meta property="og:image:height" content="720">
+<meta property="og:image:alt" content="A marble statue with orange cracks, a chain of hexagonal hash blocks flowing into her mind, and the word MNEMOS.">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:site" content="@bugnarokdev">
+<meta name="twitter:title" content="Mnemos · Sovereign memory for Hermes Agent">
+<meta name="twitter:description" content="Encrypted on your machine. Stored on Walrus. Indexed on Sui. Restore anywhere.">
+<meta name="twitter:image" content="https://mnemos.rest/cover.jpg">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="hero">
+  <nav class="top" aria-label="Primary">
+    <a class="brand" href="#top" aria-label="Mnemos home"><img src="favicon.svg" alt="" width="22" height="22"> mnemos<span class="dim">.rest</span></a>
+    <ul>
+      <li><a href="#chain">Verify</a></li>
+      <li><a href="#quickstart">Quickstart</a></li>
+      <li><a href="#proof">Proof</a></li>
+      <li><a href="https://github.com/bugnarokdev/mnemos">GitHub</a></li>
+    </ul>
+  </nav>
+  <figure class="cover" id="top">
+    <picture>
+      <source media="(max-width: 820px)" srcset="cover-800.jpg">
+      <img src="cover.jpg" width="1280" height="720" alt="A marble statue with orange cracks, a chain of hexagonal hash blocks flowing into her mind, beside the word MNEMOS and the line: sovereign memory for hermes agent." fetchpriority="high">
+    </picture>
+  </figure>
+  <div class="intro">
+    <h1><span class="sr">Mnemos: </span>Sovereign memory for Hermes Agent</h1>
+    <p class="lede">Your agent remembers. <em>Only you</em> can read it. Facts are encrypted on the machine that writes them, stored as ciphertext on Walrus, and indexed by a Sui object you own.</p>
+    <p class="cta">
+      <a class="btn" href="#quickstart">Get started</a>
+      <a class="btn ghost" href="https://github.com/bugnarokdev/mnemos">View on GitHub</a>
+    </p>
+  </div>
+</header>
+
+<main id="main">
+
+<section class="pillars" aria-labelledby="what">
+  <h2 id="what"><span class="num">I.</span> What it is</h2>
+  <ol class="grid">
+    <li>
+      <h3>Encrypted here</h3>
+      <p>XChaCha20-Poly1305 with keys derived from <code>MNEMOS_SECRET</code> by HKDF-SHA256. Plaintext and the secret never leave the machine.</p>
+    </li>
+    <li>
+      <h3>Stored on Walrus</h3>
+      <p>Each snapshot is a ciphertext blob on Walrus testnet. The blob id is public; the bytes are unreadable without the secret.</p>
+    </li>
+    <li>
+      <h3>Indexed on Sui</h3>
+      <p>An owned <code>MemoryIndex</code> object on Sui testnet keeps blob ids, the hash-chain head, and Ed25519 signatures. It only accepts an append that links to the current head.</p>
+    </li>
+    <li>
+      <h3>Restore anywhere</h3>
+      <p>Wipe a profile or switch machines. Your secret plus one object id rebuilds the local cache. Prefetch and recall stay local and never touch the network.</p>
+    </li>
+  </ol>
+</section>
+
+<section class="chain" id="chain" aria-labelledby="chain-h">
+  <h2 id="chain-h"><span class="num">II.</span> A memory you can audit</h2>
+  <p class="sub">Every snapshot commits to the one before it. <code>history --verify</code> downloads each blob, recomputes its hash, checks the link and the signature. No secret needed. These are the real snapshots of the live testnet index.</p>
+
+  <div class="links" role="list" aria-label="Hash chain">
+    <div class="block genesis" role="listitem">
+      <span class="k">genesis</span>
+      <span class="h">0000000000000000</span>
+      <span class="b">32 zero bytes</span>
+    </div>
+    <span class="arrow" aria-hidden="true"></span>
+    <div class="block" role="listitem" data-v="1">
+      <span class="k">v1 · session demo</span>
+      <span class="h">03053bacf1305209</span>
+      <span class="b" title="Walrus blob id">ymHOBfSei9ECmnM_CoA-4Q2oLtTX3tYgVgvN4Hngxiw</span>
+      <span class="st" aria-live="off"></span>
+    </div>
+    <span class="arrow" aria-hidden="true"></span>
+    <div class="block" role="listitem" data-v="2">
+      <span class="k">v2 · session demo</span>
+      <span class="h">799a8745d1d77c62</span>
+      <span class="b" title="Walrus blob id">31Wm7ToeEUOP0GWGFn3_UjinT02gtLuJ4Rm2mnF0HVg</span>
+      <span class="st" aria-live="off"></span>
+    </div>
+  </div>
+
+  <div class="term" role="region" aria-label="Terminal">
+    <div class="bar"><i></i><i></i><i></i><span>bugnarokdev@machine-b ~</span></div>
+<pre id="out" aria-live="polite"><span class="p">$</span> hermes mnemos history --verify
+MemoryIndex 0x40028382ba48edaff90240696fb0441854046d9bee10195d296d2046a72668e3  pubkey c5f2488e608132c3
+v1    <b class="ok">OK</b>     03053bacf1305209  blob ymHOBfSei9ECmnM_CoA-4Q2oLtTX3tYgVgvN4Hngxiw
+v2    <b class="ok">OK</b>     799a8745d1d77c62  blob 31Wm7ToeEUOP0GWGFn3_UjinT02gtLuJ4Rm2mnF0HVg
+<b class="ok">OK: 2 versions verified</b></pre>
+  </div>
+  <p class="controls">
+    <button type="button" id="run" class="btn">Run verify</button>
+    <button type="button" id="tamper" class="btn ghost" aria-pressed="false">Tamper with v2</button>
+  </p>
+  <p class="note">The tamper button is a local illustration: it flips one byte of the v2 blob in your browser and shows what <code>--verify</code> reports (it exits with status 1).</p>
+</section>
+
+<section class="quick" id="quickstart" aria-labelledby="qs">
+  <h2 id="qs"><span class="num">III.</span> Quickstart</h2>
+  <p class="sub">Hermes Agent 0.23.1 or newer, Python 3.11 or newer. The pure Python backend works out of the box; the Rust core is optional and opt-in.</p>
+  <ol class="steps">
+    <li>
+      <h3>Install the plugin</h3>
+<pre><code>hermes plugins install https://github.com/bugnarokdev/mnemos.git \
+  --ref &lt;commit-sha&gt; --yes-deps --enable</code></pre>
+    </li>
+    <li>
+      <h3>Set your secret <span class="dim">in $HERMES_HOME/.env</span></h3>
+<pre><code>MNEMOS_SECRET=choose-a-long-passphrase</code></pre>
+    </li>
+    <li>
+      <h3>Create your MemoryIndex <span class="dim">on Sui testnet</span></h3>
+<pre><code>cd move/MemoryIndex
+sui move build --dump-bytecode-as-base64 &gt; /tmp/mnemos-bytecode.json
+hermes mnemos init --bytecode /tmp/mnemos-bytecode.json</code></pre>
+    </li>
+    <li>
+      <h3>Restore on another machine</h3>
+<pre><code>hermes mnemos restore --object-id 0x&lt;your-memory-index&gt;
+hermes mnemos history --verify</code></pre>
+    </li>
+  </ol>
+  <p class="docs">Documentation: <a href="https://github.com/bugnarokdev/mnemos/tree/main/docs/en">English</a> · <a href="https://github.com/bugnarokdev/mnemos/tree/main/docs/fr" hreflang="fr">Français</a> · <a href="https://github.com/bugnarokdev/mnemos#network-disclosure">Network disclosure</a></p>
+</section>
+
+<section class="proof" id="proof" aria-labelledby="pf">
+  <h2 id="pf"><span class="num">IV.</span> Live on testnet</h2>
+  <dl>
+    <div><dt>MemoryIndex</dt><dd><a href="https://suiscan.xyz/testnet/object/0x40028382ba48edaff90240696fb0441854046d9bee10195d296d2046a72668e3"><code>0x40028382…a72668e3</code></a></dd></div>
+    <div><dt>Flush tx (v2)</dt><dd><a href="https://suiscan.xyz/testnet/tx/ASQfWmRHPvsRpGXAr69Sm8WX4dKEqcAy5w2LnbXHm5j9"><code>ASQfWmRH…XHm5j9</code></a></dd></div>
+    <div><dt>Walrus blob (v2)</dt><dd><a href="https://aggregator.walrus-testnet.walrus.space/v1/blobs/31Wm7ToeEUOP0GWGFn3_UjinT02gtLuJ4Rm2mnF0HVg"><code>31Wm7Toe…F0HVg</code></a> <span class="dim">(ciphertext)</span></dd></div>
+    <div><dt>Hermes catalog</dt><dd><a href="https://github.com/NousResearch/hermes-agent/pull/153218">Pull request #153218</a></dd></div>
+    <div><dt>Demo video</dt><dd><a href="https://x.com/bugnarokdev/status/2120415906962583646">Post on X</a></dd></div>
+  </dl>
+</section>
+
+<p class="built">Built on Sui · Walrus — for Hermes Agent by Nous Research</p>
+
+</main>
+
+<footer>
+  <p>Built by BugNaRok (<a href="https://x.com/bugnarokdev">@bugnarokdev</a>) · <a href="https://github.com/bugnarokdev/mnemos/blob/main/LICENSE">MIT License</a> · <a href="https://github.com/bugnarokdev/mnemos">Source</a></p>
+  <p class="dim">This release runs on Sui testnet and Walrus testnet only. Testnet SUI and WAL have no value. No telemetry.</p>
+</footer>
+
+<script src="app.js" defer></script>
+</body>
+</html>
