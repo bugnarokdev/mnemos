@@ -11,8 +11,9 @@
 [![Hermes >=0.23.1](https://img.shields.io/badge/hermes-%3E%3D0.23.1-6f42c1.svg)](https://github.com/NousResearch/hermes-agent)
 [![Sui testnet](https://img.shields.io/badge/Sui-testnet-4DA2FF.svg)](https://sui.io/)
 [![Walrus testnet](https://img.shields.io/badge/Walrus-testnet-00B2A9.svg)](https://www.walrus.xyz/)
+[![Website](https://img.shields.io/badge/web-mnemos.rest-FF6A00.svg)](https://mnemos.rest)
 
-[Quickstart](#quickstart) · [Verify the history](#verify-the-history) · [Documentation](#documentation) · [Network disclosure](#network-disclosure)
+**[mnemos.rest](https://mnemos.rest)** · [Quickstart](#quickstart) · [Verify the history](#verify-the-history) · [Documentation](#documentation) · [Network disclosure](#network-disclosure)
 
 </div>
 
