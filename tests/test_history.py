@@ -136,3 +136,16 @@ def test_wheel_checksums_are_pinned(monkeypatch):
     assert reason == "native wheel checksum did not match"
     assert urls == [native_wheel.DEFAULT_RELEASE + "/mnemos_core-0.2.0-cp311-abi3-win_amd64.whl"]
     assert hashlib.sha256(b"not the wheel").hexdigest() not in native_wheel.PINNED_SHA256.values()
+
+
+def test_package_id_is_recovered_from_index_type(monkeypatch, tmp_path):
+    from mnemos import py_engine
+
+    assert py_engine.package_id_from_type("0xabc::memory_index::MemoryIndex") == "0xabc"
+    assert py_engine.package_id_from_type("0x2::coin::Coin") == ""
+    obj = {"asMoveObject": {"contents": {"type": {"repr": "0xfeed::memory_index::MemoryIndex"}, "json": {}}}}
+    monkeypatch.setattr(py_engine, "graphql_object", lambda url, oid, timeout=8: obj)
+    config = py_engine.load_file_config(tmp_path)
+    config["index_object_id"] = "0x1"
+    assert py_engine.ensure_package_id(tmp_path, config) == "0xfeed"
+    assert py_engine.load_file_config(tmp_path)["package_id"] == "0xfeed"

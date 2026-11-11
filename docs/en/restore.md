@@ -27,7 +27,7 @@ The new profile can then `prefetch` and `mnemos_recall` without another network 
 
 ## Moving a profile
 
-Copy `MNEMOS_SECRET` into the new profile's secret store yourself. Do not commit it. Copy `package_id` and `index_object_id` into `mnemos/config.json` if you want `init` to be skipped. `hermes mnemos restore` rebuilds `mnemos.sqlite`. The old SQLite file is not required.
+Copy `MNEMOS_SECRET` into the new profile's secret store yourself. Do not commit it. Only `index_object_id` is needed: `hermes mnemos restore --object-id` saves it, and the `package_id` is read from the object's Move type and saved too, so a later `flush` works without `init`. `hermes mnemos restore` rebuilds `mnemos.sqlite`. The old SQLite file is not required.
 
 `backup_paths()` returns an empty list because the provider state that lives outside the chain is under `HERMES_HOME`, which Hermes already archives. The chain is the backup that survives deleting that home.
 

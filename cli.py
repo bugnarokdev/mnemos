@@ -17,7 +17,7 @@ def _engine():
     from agent.secret_scope import get_secret
 
     from .mnemos.engine import open_engine
-    from .mnemos.py_engine import load_file_config
+    from .mnemos.py_engine import ensure_package_id, load_file_config
 
     secret = get_secret("MNEMOS_SECRET") or ""
     if not secret:
@@ -27,6 +27,7 @@ def _engine():
     sui_key = get_secret("MNEMOS_SUI_PRIVATE_KEY") or ""
     if sui_key:
         config["sui_private_key"] = sui_key
+    ensure_package_id(home, config)
     db_path = str(Path(home) / "mnemos" / "mnemos.sqlite")
     return open_engine(db_path, secret, config), home, config
 
@@ -78,6 +79,13 @@ def _restore(object_id: str) -> None:
         engine.close()
     if result.get("index_object_id"):
         save_file_config(home, {"index_object_id": result["index_object_id"]})
+        if result["index_object_id"] != config.get("index_object_id"):
+            config["package_id"] = ""
+            save_file_config(home, {"package_id": None})
+        config["index_object_id"] = result["index_object_id"]
+        package_id = ensure_package_id(home, config)
+        if package_id:
+            result["package_id"] = package_id
     print(json.dumps(result, indent=2))
 
 

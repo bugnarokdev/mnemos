@@ -61,6 +61,36 @@ def save_file_config(hermes_home: str | os.PathLike[str], values: dict[str, Any]
     path.write_text(json.dumps(current, indent=2) + "\n", encoding="utf-8")
 
 
+def package_id_from_type(type_repr: str) -> str:
+    """``0xPKG::memory_index::MemoryIndex`` -> ``0xPKG``; empty if the type is something else."""
+    parts = str(type_repr or "").split("::")
+    if len(parts) == 3 and parts[1:] == ["memory_index", "MemoryIndex"] and parts[0].startswith("0x"):
+        return parts[0]
+    return ""
+
+
+def ensure_package_id(hermes_home: str | os.PathLike[str], config: dict[str, Any], timeout: float = 8) -> str:
+    """Fill a missing package_id from the MemoryIndex type and save it.
+
+    A restore on a new machine knows the object id but not the package id, and
+    flush needs both. The package id is public: it is the prefix of the
+    object's Move type. Network errors leave the config unchanged.
+    """
+    index_id = str(config.get("index_object_id") or "").strip()
+    if config.get("package_id") or not index_id:
+        return str(config.get("package_id") or "")
+    try:
+        obj = graphql_object(config.get("graphql_url") or DEFAULTS["graphql_url"], index_id, timeout=timeout)
+    except Exception:
+        return ""
+    repr_ = (((obj.get("asMoveObject") or {}).get("contents") or {}).get("type") or {}).get("repr") or ""
+    package_id = package_id_from_type(repr_)
+    if package_id:
+        config["package_id"] = package_id
+        save_file_config(hermes_home, {"package_id": package_id})
+    return package_id
+
+
 class Engine:
     backend = "python"
     chain_writes = True

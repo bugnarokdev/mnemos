@@ -27,7 +27,7 @@ Le nouveau profil peut ensuite `prefetch` et `mnemos_recall` sans autre appel r�
 
 ## Déplacer un profil
 
-Copiez `MNEMOS_SECRET` vous-même dans le magasin de secrets du nouveau profil. Ne le commitez pas. Copiez `package_id` et `index_object_id` dans `mnemos/config.json` si vous voulez éviter `init`. `hermes mnemos restore` reconstruit `mnemos.sqlite`. L'ancien fichier SQLite n'est pas nécessaire.
+Copiez `MNEMOS_SECRET` vous-même dans le magasin de secrets du nouveau profil. Ne le commitez pas. Seul `index_object_id` est nécessaire : `hermes mnemos restore --object-id` l'enregistre, et le `package_id` est lu dans le type Move de l'objet puis enregistré aussi, donc un `flush` ultérieur fonctionne sans `init`. `hermes mnemos restore` reconstruit `mnemos.sqlite`. L'ancien fichier SQLite n'est pas nécessaire.
 
 `backup_paths()` renvoie une liste vide parce que l'état hors chaîne est sous `HERMES_HOME`, que Hermes archive déjà. La chaîne est la sauvegarde qui survit à la suppression de ce répertoire.
 

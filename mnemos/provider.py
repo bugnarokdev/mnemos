@@ -14,7 +14,7 @@ from agent.memory_provider import MemoryProvider, RecallStatus, spawn_context_th
 from agent.secret_scope import get_secret
 
 from .engine import open_engine
-from .py_engine import load_file_config, save_file_config
+from .py_engine import ensure_package_id, load_file_config, save_file_config
 
 logger = logging.getLogger(__name__)
 
@@ -79,6 +79,7 @@ class MnemosProvider(MemoryProvider):
         sui_key = get_secret("MNEMOS_SUI_PRIVATE_KEY") or ""
         if sui_key:
             config["sui_private_key"] = sui_key
+        ensure_package_id(home, config)
         db_path = str(Path(home) / "mnemos" / "mnemos.sqlite")
         self._engine = open_engine(db_path, secret, config)
         self._warm("")
