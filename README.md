@@ -32,7 +32,11 @@ English and French are kept in sync.
 
 Hermes 0.23.1 or newer. Put this repository at `$HERMES_HOME/plugins/mnemos` and set `memory.provider: mnemos`. Full steps are in the installation guide.
 
-`hermes plugins validate --install-deps` installs the Python dependencies, including the gRPC client that writes to Sui and Walrus. A Rust extension is optional: on first load Mnemos may download a checksummed wheel from GitHub releases (that call is disclosed below) and otherwise uses the Python backend. Both backends produce the same ciphertext, content hash, and signature. See [installation](docs/en/installation.md).
+`hermes plugins validate --install-deps` installs the Python dependencies, including the gRPC client that writes to Sui and Walrus. A Rust extension is optional. By default Mnemos uses the Python backend and downloads nothing. Set `MNEMOS_NATIVE_AUTO=1` to opt in to the native wheel: it comes only from this repository's official GitHub release and must match a sha256 pinned in the code (that call is disclosed below). Both backends produce the same ciphertext, content hash, and signature. See [installation](docs/en/installation.md).
+
+## Verify the history
+
+`hermes mnemos history` lists every snapshot in the MemoryIndex. `hermes mnemos history --verify` downloads each blob from Walrus, recomputes its content hash and the link to the previous one, checks the Ed25519 signature, prints `OK` or `BROKEN` per version, and exits non-zero on any failure. It needs no secret. See [verifiable history](docs/en/verifiable-history.md).
 
 ## Demo
 
@@ -40,14 +44,14 @@ Hermes 0.23.1 or newer. Put this repository at `$HERMES_HOME/plugins/mnemos` and
 
 ## Network disclosure
 
-When a flush, checkpoint, restore, init, or doctor runs, Mnemos calls:
+When a flush, checkpoint, restore, init, doctor, or history runs, Mnemos calls:
 
 - Walrus testnet publisher `https://publisher.walrus-testnet.walrus.space` (`PUT /v1/blobs`)
 - Walrus testnet aggregator `https://aggregator.walrus-testnet.walrus.space` (`GET /v1/blobs/<id>`)
 - Sui testnet gRPC `https://fullnode.testnet.sui.io:443`
 - Sui testnet GraphQL `https://graphql.testnet.sui.io/graphql`
 - Sui testnet faucet `https://faucet.testnet.sui.io` during `hermes mnemos init` only
-- Optional native wheel and `SHA256SUMS` from `https://github.com/bugnarokdev/mnemos/releases/download/mnemos-native-v0.2.1/` when `MNEMOS_NATIVE_AUTO` is not `0` and `mnemos_core` is not already installed. Set `MNEMOS_BACKEND=python` to skip that download.
+- Opt-in only: the native wheel from `https://github.com/bugnarokdev/mnemos/releases/download/mnemos-native-v0.2.1/` when `MNEMOS_NATIVE_AUTO=1` and `mnemos_core` is not already installed. The URL is fixed and the wheel must match a sha256 pinned in `mnemos/native_wheel.py`; nothing else is fetched. Off by default.
 
 Prefetch and recall do not use the network. Payloads sent to Walrus are ciphertext. The Sui object stores blob ids, hashes, and signatures, not plaintext. There is no telemetry.
 

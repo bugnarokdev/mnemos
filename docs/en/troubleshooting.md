@@ -2,7 +2,7 @@
 
 ## Doctor says `backend: python`
 
-That is a working mode. `reason` says why the native module was not used (auto-download off, no matching wheel, or `MNEMOS_BACKEND=python`). Chain writes still go to Sui and Walrus. To prefer Rust, leave `MNEMOS_NATIVE_AUTO` at its default or run `scripts/build_core.sh` with `MNEMOS_PYTHON` set to the interpreter Hermes uses.
+That is a working mode. `reason` says why the native module was not used (native download is opt-in and off by default, no matching wheel, or `MNEMOS_BACKEND=python`). Chain writes still go to Sui and Walrus. To prefer Rust, set `MNEMOS_NATIVE_AUTO=1` (official release only, pinned sha256) or run `scripts/build_core.sh` with `MNEMOS_PYTHON` set to the interpreter Hermes uses.
 
 ## `hermes` cannot import its own dependencies under a new `HERMES_HOME`
 

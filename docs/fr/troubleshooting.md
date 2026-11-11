@@ -2,7 +2,7 @@
 
 ## Le diagnostic indique `backend: python`
 
-C'est un mode qui fonctionne. `reason` dit pourquoi le module natif n'est pas utilisé (téléchargement désactivé, pas de wheel, ou `MNEMOS_BACKEND=python`). Les écritures vont quand même vers Sui et Walrus. Pour préférer Rust, laissez `MNEMOS_NATIVE_AUTO` à sa valeur par défaut ou lancez `scripts/build_core.sh` avec `MNEMOS_PYTHON` égal à l'interpréteur d'Hermes.
+C'est un mode qui fonctionne. `reason` dit pourquoi le module natif n'est pas utilisé (téléchargement natif optionnel et désactivé par défaut, pas de wheel, ou `MNEMOS_BACKEND=python`). Les écritures vont quand même vers Sui et Walrus. Pour préférer Rust, mettez `MNEMOS_NATIVE_AUTO=1` (release officielle seulement, sha256 épinglé) ou lancez `scripts/build_core.sh` avec `MNEMOS_PYTHON` égal à l'interpréteur d'Hermes.
 
 ## `hermes` ne charge pas ses dépendances avec un nouveau `HERMES_HOME`
 

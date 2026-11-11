@@ -38,4 +38,6 @@ Prefetch injects matching plaintext from the local cache into the Hermes prompt.
 
 ## Catalog notes
 
+The native wheel download is off by default. With `MNEMOS_NATIVE_AUTO=1` it fetches only from this repository's official `mnemos-native-v0.2.1` GitHub release, and the wheel must match a sha256 pinned in `mnemos/native_wheel.py`; there is no URL override and no checksum is read from the network. Each wheel is built and attested by the repository's public GitHub Actions workflow.
+
 Secrets are declared in `plugin.yaml` and read only through `get_secret`. The plugin does not read `auth.json`, another profile's files, or a shell child in YOLO mode. Doctor and faucet calls use timeouts. `on_session_end` stops waiting after 20 seconds.

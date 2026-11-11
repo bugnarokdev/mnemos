@@ -63,7 +63,7 @@ def open_engine(db_path: str, secret: str, config: dict):
     import os
 
     forced = os.environ.get("MNEMOS_BACKEND", "").strip().lower()
-    auto = os.environ.get("MNEMOS_NATIVE_AUTO", "1").strip().lower() not in {"0", "false", "no"}
+    auto = os.environ.get("MNEMOS_NATIVE_AUTO", "0").strip().lower() in {"1", "true", "yes"}
     reason = ""
     module = None
     if forced != "python":
@@ -81,7 +81,7 @@ def open_engine(db_path: str, secret: str, config: dict):
                 except ImportError:
                     module = None
             else:
-                reason = "MNEMOS_NATIVE_AUTO is off"
+                reason = "native download is opt-in (set MNEMOS_NATIVE_AUTO=1)"
     if module is not None and forced != "python":
         inner = module.Engine(db_path, secret, json.dumps(config))
         engine = _RustEngine(inner)

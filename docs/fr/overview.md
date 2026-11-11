@@ -13,4 +13,6 @@ Hermes appelle aussi le fournisseur de lui-même. `prefetch` injecte le rappel m
 
 La restauration est `hermes mnemos restore`. Hermes n'offre pas d'emplacement de plugin nommé `hermes memory restore`. `hermes memory status` est la commande intégrée et affiche la configuration Mnemos. Le diagnostic et la restauration sont sur `hermes mnemos`.
 
-Cette version vise le testnet Sui et le testnet Walrus. Le mainnet, le partage via Seal et un navigateur d'historique viennent ensuite.
+`hermes mnemos history --verify` parcourt chaque snapshot du MemoryIndex et le vérifie contre Walrus, sans le secret. Voir [historique vérifiable](verifiable-history.md).
+
+Cette version vise le testnet Sui et le testnet Walrus. Le mainnet, le partage via Seal et un navigateur d'historique graphique viennent ensuite.

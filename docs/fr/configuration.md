@@ -9,8 +9,7 @@ Les réglages non secrets sont dans `$HERMES_HOME/mnemos/config.json`. Les secre
 | `MNEMOS_SECRET` | oui | Phrase secrète. HKDF-SHA256 dérive la clé XChaCha20-Poly1305, la graine Ed25519 des instantanés et, si aucune clé Sui n'est définie, la clé de gaz. |
 | `MNEMOS_SUI_PRIVATE_KEY` | non | Clé de gaz optionnelle. L'extension Rust accepte le bech32 `suiprivkey`, le base64 du trousseau Sui, ou une graine hexadécimale de 32 octets. Le backend Python accepte une graine hexadécimale de 32 octets. Si vide, les deux dérivent la clé de gaz de `MNEMOS_SECRET`. |
 | `MNEMOS_BACKEND` | non | `python` force l'écrivain gRPC Python. Vide préfère `mnemos_core` quand il peut être chargé. |
-| `MNEMOS_NATIVE_AUTO` | non | Activé par défaut. `0` saute le téléchargement de la wheel de release. |
-| `MNEMOS_NATIVE_BASE` | non | Remplace l'URL de release utilisée pour ce téléchargement. La valeur par défaut est la release `mnemos-native-v0.2.1` sur `https://github.com/bugnarokdev/mnemos`. |
+| `MNEMOS_NATIVE_AUTO` | non | Désactivé par défaut. `1` active le téléchargement de la wheel native depuis la release officielle `mnemos-native-v0.2.1` sur `https://github.com/bugnarokdev/mnemos`. L'URL n'est pas modifiable et la wheel doit correspondre à un sha256 épinglé. |
 
 `hermes memory setup` demande ces deux secrets et `index_object_id`.
 

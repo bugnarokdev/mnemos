@@ -38,4 +38,6 @@ Le prefetch injecte le texte en clair correspondant, depuis le cache local, dans
 
 ## Notes pour le catalogue
 
+Le téléchargement de la wheel native est désactivé par défaut. Avec `MNEMOS_NATIVE_AUTO=1`, il ne vient que de la release GitHub officielle `mnemos-native-v0.2.1` de ce dépôt, et la wheel doit correspondre à un sha256 épinglé dans `mnemos/native_wheel.py` ; aucune URL de remplacement, aucun checksum lu sur le réseau. Chaque wheel est construite et attestée par le workflow GitHub Actions public du dépôt.
+
 Les secrets sont déclarés dans `plugin.yaml` et lus seulement via `get_secret`. Le plugin ne lit pas `auth.json`, les fichiers d'un autre profil, ni un shell enfant en mode YOLO. Le diagnostic et le faucet ont des délais. `on_session_end` cesse d'attendre après 20 secondes.

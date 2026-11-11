@@ -43,8 +43,10 @@ def mnemos_command(args) -> None:
         _flush()
     elif cmd == "init":
         _init(getattr(args, "bytecode", "") or "")
+    elif cmd == "history":
+        _history(getattr(args, "object_id", "") or "", bool(getattr(args, "verify", False)), bool(getattr(args, "json", False)))
     else:
-        raise SystemExit("Usage: hermes mnemos <status|doctor|restore|flush|init>")
+        raise SystemExit("Usage: hermes mnemos <status|doctor|restore|flush|init|history>")
 
 
 def _status() -> None:
@@ -109,6 +111,42 @@ def _init(bytecode_path: str) -> None:
     print(json.dumps(result, indent=2))
 
 
+def _history(object_id: str, verify: bool, as_json: bool) -> None:
+    """List or verify the MemoryIndex history. Needs no secret."""
+    from .mnemos import history
+    from .mnemos.py_engine import graphql_object, load_file_config, walrus_get
+
+    config = load_file_config(_home())
+    object_id = (object_id or config.get("index_object_id") or "").strip()
+    if not object_id:
+        raise SystemExit("No MemoryIndex: pass --object-id or run `hermes mnemos init`.")
+    obj = graphql_object(config["graphql_url"], object_id)
+    contents = ((obj.get("asMoveObject") or {}).get("contents") or {}).get("json")
+    if not isinstance(contents, dict):
+        raise SystemExit(f"Sui object {object_id} has no Move content")
+    index = history.parse_index(contents)
+    if not verify:
+        rows = history.list_history(index)
+        if as_json:
+            print(json.dumps({"index_object_id": object_id, "versions": rows}, indent=2))
+        else:
+            print(f"MemoryIndex {object_id}: {len(rows)} version{'' if len(rows) == 1 else 's'}")
+            for row in rows:
+                print(f"v{row['version']:<4} {row['content_hash'][:16]}  session {row['session_id']}  blob {row['blob_id']}")
+        return
+    report = history.verify_history(index, lambda blob_id: walrus_get(config["walrus_aggregator"], blob_id))
+    report["index_object_id"] = object_id
+    if as_json:
+        print(json.dumps(report, indent=2))
+    else:
+        print(f"MemoryIndex {object_id}  pubkey {report.get('pubkey', '')[:16]}")
+        for row in report["rows"]:
+            print(history.format_row(row))
+        print(report["verdict"])
+    if not report["ok"]:
+        raise SystemExit(1)
+
+
 def register_cli(subparser) -> None:
     subs = subparser.add_subparsers(dest="mnemos_command")
     subs.add_parser("status", help="Show the local store and chain head")
@@ -119,4 +157,8 @@ def register_cli(subparser) -> None:
     del flush
     init = subs.add_parser("init", help="Fund the gas key, publish MemoryIndex, create the object")
     init.add_argument("--bytecode", required=True, help="JSON from sui move build --dump-bytecode-as-base64")
+    hist = subs.add_parser("history", help="List the MemoryIndex history, or check it with --verify")
+    hist.add_argument("--object-id", default="", help="Sui object id (defaults to config)")
+    hist.add_argument("--verify", action="store_true", help="Fetch each blob, recompute hashes, check signatures")
+    hist.add_argument("--json", action="store_true", help="Print JSON instead of one line per version")
     subparser.set_defaults(func=mnemos_command)

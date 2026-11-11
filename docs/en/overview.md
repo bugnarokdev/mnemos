@@ -13,4 +13,6 @@ Hermes also calls the provider on its own. `prefetch` injects cached recall befo
 
 Restore is `hermes mnemos restore`. Hermes does not offer a plugin slot named `hermes memory restore`. `hermes memory status` is the built-in status command and prints the Mnemos config. Doctor and restore live on `hermes mnemos`.
 
-This release targets Sui testnet and Walrus testnet. Mainnet, Seal sharing, and a history browser are intentionally later.
+`hermes mnemos history --verify` walks every snapshot in the MemoryIndex and checks it against Walrus, without the secret. See [verifiable history](verifiable-history.md).
+
+This release targets Sui testnet and Walrus testnet. Mainnet, Seal sharing, and a graphical history browser are intentionally later.

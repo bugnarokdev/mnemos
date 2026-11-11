@@ -41,7 +41,7 @@ hermes memory status
 
 ## Cœur natif
 
-Si `mnemos_core` n'est pas importable et que `MNEMOS_NATIVE_AUTO` n'est pas `0`, la première ouverture télécharge la wheel correspondante et `SHA256SUMS` depuis la release `mnemos-native-v0.2.1` sur `https://github.com/bugnarokdev/mnemos`, vérifie le sha256, puis la charge. Une release absente, un checksum faux, ou `MNEMOS_BACKEND=python` laisse le backend Python. `hermes mnemos doctor` indique le backend actif et pourquoi.
+Par défaut Mnemos utilise le backend Python et ne télécharge rien. Le téléchargement natif est optionnel : avec `MNEMOS_NATIVE_AUTO=1` et sans `mnemos_core` importable, la première ouverture télécharge la wheel correspondante depuis la release officielle `mnemos-native-v0.2.1` sur `https://github.com/bugnarokdev/mnemos`, la compare au sha256 épinglé dans `mnemos/native_wheel.py`, puis la charge. L'URL est fixe et aucun fichier de checksums n'est lu sur le réseau. Une release absente, un checksum faux, ou `MNEMOS_BACKEND=python` laisse le backend Python. `hermes mnemos doctor` indique le backend actif et pourquoi.
 
 GitHub Actions (`.github/workflows/native-wheels.yml`) construit les wheels et les atteste avec `actions/attest-build-provenance`. Aucun binaire n'est commité.
 
