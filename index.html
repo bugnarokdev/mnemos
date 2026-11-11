@@ -67,7 +67,7 @@
     </li>
     <li>
       <h3>Indexed on Sui</h3>
-      <p>An owned <code>MemoryIndex</code> object on Sui testnet keeps blob ids, the hash-chain head, and Ed25519 signatures. It only accepts an append that links to the current head.</p>
+      <p>An owned <code>MemoryIndex</code> object on Sui testnet keeps blob ids, the hash-chain head, and Ed25519 signatures. It only accepts an append that links to the current head. Mnemos reads it straight from the Sui fullnode; GraphQL is only a fallback, and a stale indexer is refused rather than trusted.</p>
     </li>
     <li>
       <h3>Restore anywhere</h3>
