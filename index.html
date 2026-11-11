@@ -59,7 +59,7 @@
   <ol class="grid">
     <li>
       <h3>Encrypted here</h3>
-      <p>XChaCha20-Poly1305 with keys derived from <code>MNEMOS_SECRET</code> by HKDF-SHA256. Plaintext and the secret never leave the machine.</p>
+      <p>XChaCha20-Poly1305 with keys derived from <code>MNEMOS_SECRET</code> by Argon2id (64 MiB, 3 passes), then HKDF-SHA256. Plaintext and the secret never leave the machine.</p>
     </li>
     <li>
       <h3>Stored on Walrus</h3>
@@ -162,7 +162,7 @@ hermes mnemos history --verify</code></pre>
 
 <footer>
   <p>Built by BugNaRok (<a href="https://x.com/bugnarokdev" target="_blank" rel="noopener noreferrer">@bugnarokdev</a>) · <a href="https://github.com/bugnarokdev/mnemos/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">MIT License</a> · <a href="https://github.com/bugnarokdev/mnemos" target="_blank" rel="noopener noreferrer">Source</a></p>
-  <p class="dim">This release runs on Sui testnet and Walrus testnet only. Testnet SUI and WAL have no value. No telemetry.</p>
+  <p class="dim">This release runs on Sui testnet and Walrus testnet only, and refuses to sign unless the RPC reports the Sui testnet chain id. Testnet SUI and WAL have no value. No telemetry.</p>
 </footer>
 
 <script src="app.js" defer></script>
