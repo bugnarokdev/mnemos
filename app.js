@@ -6,24 +6,27 @@
   var reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   var tampered = false;
   var timer = null;
-  var IDX = "0x40028382ba48edaff90240696fb0441854046d9bee10195d296d2046a72668e3";
-  var V1 = "03053bacf1305209  blob ymHOBfSei9ECmnM_CoA-4Q2oLtTX3tYgVgvN4Hngxiw";
-  var V2 = "799a8745d1d77c62  blob 31Wm7ToeEUOP0GWGFn3_UjinT02gtLuJ4Rm2mnF0HVg";
+  var IDX = "0x772bef4afb843eec39dc880b3c0def75c7c363d3dc3942d8ac546931bf5d48bd";
+  var V1 = "fdb11b68cb3386a4  blob k7xbplKaLg_6X9VHmiHx6IzMmY1HQ8q6IfxfytE3V-M";
+  var V2 = "577cd51205e7f5a1  blob IWdN2tdMe_iMto_WsNzvfu-s2ca3DIdgA38abPxpCXg";
+  var V3 = "51f27807f88e3d0d  blob 46DO0SCDR0uAz0VWBzYihPr9MgJmUzeNdfEATmtbsX0";
 
   function lines() {
     var l = [
       '<span class="p">$</span> hermes mnemos history --verify',
-      "MemoryIndex " + IDX + "  pubkey c5f2488e608132c3",
+      "MemoryIndex " + IDX + "  pubkey a12af0e49b9c18ab",
       'v1    <b class="ok">OK</b>     ' + V1
     ];
     if (tampered) {
       l.push('v2    <b class="bad">BROKEN</b> ' + V2 + "  (blob does not match the committed content hash)");
-      l.push('<b class="bad">BROKEN: 1 of 2 versions failed</b>');
+      l.push('v3    <b class="ok">OK</b>     ' + V3);
+      l.push('<b class="bad">BROKEN: 1 of 3 versions failed</b>');
       l.push('<span class="p">$</span> echo $?');
       l.push("1");
     } else {
       l.push('v2    <b class="ok">OK</b>     ' + V2);
-      l.push('<b class="ok">OK: 2 versions verified</b>');
+      l.push('v3    <b class="ok">OK</b>     ' + V3);
+      l.push('<b class="ok">OK: 3 versions verified</b>');
     }
     return l;
   }
@@ -43,6 +46,7 @@
       out.innerHTML = l.join("\n");
       mark(0, "ok");
       mark(1, tampered ? "bad" : "ok");
+      mark(2, "ok");
       return;
     }
     out.innerHTML = "";
@@ -51,7 +55,8 @@
       out.innerHTML = l.slice(0, n + 1).join("\n");
       if (n === 1) mark(0, "busy");
       if (n === 2) { mark(0, "ok"); mark(1, "busy"); }
-      if (n === 3) mark(1, tampered ? "bad" : "ok");
+      if (n === 3) { mark(1, tampered ? "bad" : "ok"); mark(2, "busy"); }
+      if (n === 4) mark(2, "ok");
       n++;
       if (n < l.length) timer = setTimeout(step, n === 1 ? 500 : 650);
     })();
@@ -72,6 +77,6 @@
       if (e[0].isIntersecting && !seen) { seen = true; o.disconnect(); play(); }
     }, { threshold: 0.4 }).observe(document.getElementById("chain"));
   } else {
-    mark(0, "ok"); mark(1, "ok");
+    mark(0, "ok"); mark(1, "ok"); mark(2, "ok");
   }
 })();
