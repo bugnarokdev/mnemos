@@ -45,7 +45,7 @@ flowchart LR
     P --> S
 ```
 
-Details: [architecture](docs/en/architecture.md) · [verifiable history](docs/en/verifiable-history.md).
+Details: [architecture](docs/en/architecture.md) · [verifiable history](docs/en/verifiable-history.md) · [test report](docs/en/test-report.md).
 
 ## Quickstart
 
@@ -125,6 +125,7 @@ English and French are kept in sync.
 | Verifiable history | [verifiable history](docs/en/verifiable-history.md) | [historique vérifiable](docs/fr/verifiable-history.md) |
 | Sui and Walrus testnet | [deployment](docs/en/deployment.md) | [déploiement](docs/fr/deployment.md) |
 | Troubleshooting | [troubleshooting](docs/en/troubleshooting.md) | [dépannage](docs/fr/troubleshooting.md) |
+| Test report | [test report](docs/en/test-report.md) | [rapport de tests](docs/fr/test-report.md) |
 
 ## Security at a glance
 

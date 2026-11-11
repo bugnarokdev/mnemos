@@ -68,8 +68,8 @@ Reads now go to the same gRPC fullnode that executes transactions (`sui_rpc`): `
 GraphQL is now only a fallback, and only when it is provably fresh:
 
 1. Read from the fullnode. A found object is used as is. An object the fullnode reports as not found is final; GraphQL is never asked to contradict it. A chain-id failure is final too.
-2. If the fullnode read fails (unreachable, timeout, other error) and `read_source` is `auto`, Mnemos checks GraphQL before trusting it: the fullnode checkpoint height and GraphQL's latest checkpoint are read, GraphQL must report the Sui testnet chain id, and the gap must be at most `graphql_max_lag` checkpoints (default 100, about a minute on testnet).
-3. If any of that fails, the read is refused with both reasons, for example `GraphQL is 33313 checkpoints behind the fullnode (limit 100); refusing a stale read`. Mnemos never acts on data it cannot date.
+2. If the fullnode passed the chain check but a read fails (timeout, transport or server error) and `read_source` is `auto`, Mnemos checks GraphQL before trusting it: the fullnode checkpoint height and GraphQL's latest checkpoint are read, GraphQL must report the Sui testnet chain id, and the gap must be at most `graphql_max_lag` checkpoints (default 100, about a minute on testnet).
+3. If any of that fails, the read is refused with both reasons, for example `GraphQL is 33313 checkpoints behind the fullnode (limit 100); refusing a stale read`. Mnemos never acts on data it cannot date. A fullnode that cannot be reached at all fails the chain check, so the read is refused there: the freshness check needs the fullnode's checkpoint height anyway, and GraphQL alone is never trusted.
 
 Whatever the source, the result is checked before use: the returned object id must match the one requested, the type must be `<package>::memory_index::MemoryIndex`, and when writing, the package must match `package_id`. `init` takes the package and the new MemoryIndex id from the transaction effects instead of searching the owner's objects, so an address with several indexes cannot pick the wrong one.
 
