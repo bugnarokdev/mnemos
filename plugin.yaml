@@ -1,0 +1,16 @@
+name: mnemos
+version: 0.2.0
+description: "Sovereign Hermes memory: client-side encrypted, stored on Walrus testnet, indexed by an owned Sui MemoryIndex."
+requires_hermes: ">=0.23.1"
+license: MIT
+homepage: https://github.com/bugnarokdev/mnemos
+tags:
+  - memory
+  - walrus
+  - sui
+config_keys:
+  - memory.mnemos
+requires_env:
+  - name: MNEMOS_SECRET
+    description: "Passphrase that derives the Mnemos encryption key and snapshot signing key."
+    secret: true

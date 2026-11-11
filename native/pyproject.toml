@@ -1,0 +1,15 @@
+[build-system]
+requires = ["maturin>=1.8,<2"]
+build-backend = "maturin"
+
+[project]
+name = "mnemos-core"
+version = "0.2.0"
+description = "Native core for the Mnemos Hermes memory provider"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+
+[tool.maturin]
+features = ["extension-module"]
+module-name = "mnemos_core"
+manifest-path = "Cargo.toml"

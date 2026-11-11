@@ -1,0 +1,101 @@
+"""Dashboard config panel for Mnemos. Loaded by path, not as part of plugin startup."""
+
+from plugins.memory.config_schema import (
+    KIND_NUMBER,
+    KIND_SECRET,
+    KIND_TEXT,
+    STORAGE_FLAT_JSON,
+    ProviderConfigSchema,
+    ProviderField,
+)
+
+CONFIG_SCHEMA = ProviderConfigSchema(
+    name="mnemos",
+    label="Mnemos",
+    storage=STORAGE_FLAT_JSON,
+    docs_url="https://github.com/bugnarokdev/mnemos/blob/main/docs/en/configuration.md",
+    fields=(
+        ProviderField(
+            key="mnemos_secret",
+            label="Secret",
+            kind=KIND_SECRET,
+            env_key="MNEMOS_SECRET",
+            description="Passphrase. Derives encryption and snapshot signing keys.",
+            inline=True,
+        ),
+        ProviderField(
+            key="sui_private_key",
+            label="Sui private key",
+            kind=KIND_SECRET,
+            env_key="MNEMOS_SUI_PRIVATE_KEY",
+            description="Optional. suiprivkey bech32 or hex seed. Derived from the secret when empty.",
+        ),
+        ProviderField(
+            key="index_object_id",
+            label="MemoryIndex object",
+            kind=KIND_TEXT,
+            description="Owned Sui object id that stores ordered blob ids and the hash-chain head.",
+            placeholder="0x...",
+            inline=True,
+            group="chain",
+        ),
+        ProviderField(
+            key="package_id",
+            label="Package id",
+            kind=KIND_TEXT,
+            description="Published mnemos::memory_index package id.",
+            group="chain",
+        ),
+        ProviderField(
+            key="sui_rpc",
+            label="Sui gRPC endpoint",
+            kind=KIND_TEXT,
+            default="https://fullnode.testnet.sui.io:443",
+            description="Testnet fullnode by default. Point this at a gRPC endpoint; dRPC is a later mainnet option.",
+            group="network",
+        ),
+        ProviderField(
+            key="graphql_url",
+            label="Sui GraphQL",
+            kind=KIND_TEXT,
+            default="https://graphql.testnet.sui.io/graphql",
+            group="network",
+        ),
+        ProviderField(
+            key="faucet_url",
+            label="Faucet",
+            kind=KIND_TEXT,
+            default="https://faucet.testnet.sui.io",
+            group="network",
+        ),
+        ProviderField(
+            key="walrus_publisher",
+            label="Walrus publisher",
+            kind=KIND_TEXT,
+            default="https://publisher.walrus-testnet.walrus.space",
+            group="network",
+        ),
+        ProviderField(
+            key="walrus_aggregator",
+            label="Walrus aggregator",
+            kind=KIND_TEXT,
+            default="https://aggregator.walrus-testnet.walrus.space",
+            group="network",
+        ),
+        ProviderField(
+            key="epochs",
+            label="Walrus epochs",
+            kind=KIND_NUMBER,
+            default="5",
+            description="How many Walrus testnet epochs to store each blob.",
+            group="network",
+        ),
+        ProviderField(
+            key="network",
+            label="Network",
+            kind=KIND_TEXT,
+            default="testnet",
+            group="network",
+        ),
+    ),
+)

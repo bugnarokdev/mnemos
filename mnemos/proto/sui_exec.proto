@@ -1,0 +1,160 @@
+syntax = "proto3";
+
+package sui.rpc.v2;
+
+import "google/protobuf/field_mask.proto";
+
+// Minimal subset of sui.rpc.v2 used to simulate (gas selection) and execute.
+// Field numbers match the public fullnode protocol.
+
+service TransactionExecutionService {
+  rpc SimulateTransaction(SimulateTransactionRequest) returns (SimulateTransactionResponse);
+  rpc ExecuteTransaction(ExecuteTransactionRequest) returns (ExecuteTransactionResponse);
+}
+
+message Bcs {
+  string name = 1;
+  bytes value = 2;
+}
+
+message Argument {
+  optional ArgumentKind kind = 1;
+  optional uint32 input = 2;
+  optional uint32 result = 3;
+  optional uint32 subresult = 4;
+}
+
+enum ArgumentKind {
+  ARGUMENT_KIND_UNKNOWN = 0;
+  GAS = 1;
+  INPUT = 2;
+  RESULT = 3;
+}
+
+message Input {
+  InputKind kind = 1;
+  bytes pure = 2;
+  string object_id = 3;
+  uint64 version = 4;
+  string digest = 5;
+  bool mutable = 6;
+}
+
+enum InputKind {
+  INPUT_KIND_UNKNOWN = 0;
+  PURE = 1;
+  IMMUTABLE_OR_OWNED = 2;
+  SHARED = 3;
+  RECEIVING = 4;
+  FUNDS_WITHDRAWAL = 5;
+}
+
+message MoveCall {
+  string package = 1;
+  string module = 2;
+  string function = 3;
+  repeated string type_arguments = 4;
+  repeated Argument arguments = 5;
+}
+
+message TransferObjects {
+  repeated Argument objects = 1;
+  Argument address = 2;
+}
+
+message Publish {
+  repeated bytes modules = 1;
+  repeated string dependencies = 2;
+}
+
+message Command {
+  oneof command {
+    MoveCall move_call = 1;
+    TransferObjects transfer_objects = 2;
+    Publish publish = 5;
+  }
+}
+
+message ProgrammableTransaction {
+  repeated Input inputs = 1;
+  repeated Command commands = 2;
+}
+
+message TransactionKind {
+  Kind kind = 1;
+  oneof data {
+    ProgrammableTransaction programmable_transaction = 2;
+  }
+}
+
+enum Kind {
+  KIND_UNKNOWN = 0;
+  PROGRAMMABLE_TRANSACTION = 1;
+}
+
+message ObjectReference {
+  string object_id = 1;
+  uint64 version = 2;
+  string digest = 3;
+}
+
+message GasPayment {
+  repeated ObjectReference objects = 1;
+  string owner = 2;
+  uint64 price = 3;
+  uint64 budget = 4;
+}
+
+message Transaction {
+  Bcs bcs = 1;
+  string digest = 2;
+  int32 version = 3;
+  TransactionKind kind = 4;
+  string sender = 5;
+  GasPayment gas_payment = 6;
+}
+
+message ExecutionError {
+  string description = 1;
+  uint64 command = 2;
+}
+
+message ExecutionStatus {
+  optional bool success = 1;
+  ExecutionError error = 2;
+}
+
+message TransactionEffects {
+  ExecutionStatus status = 4;
+  string transaction_digest = 7;
+}
+
+message ExecutedTransaction {
+  string digest = 1;
+  Transaction transaction = 2;
+  TransactionEffects effects = 4;
+}
+
+message SimulateTransactionRequest {
+  Transaction transaction = 1;
+  google.protobuf.FieldMask read_mask = 2;
+  optional bool do_gas_selection = 4;
+}
+
+message SimulateTransactionResponse {
+  ExecutedTransaction transaction = 1;
+}
+
+message UserSignature {
+  Bcs bcs = 1;
+}
+
+message ExecuteTransactionRequest {
+  Transaction transaction = 1;
+  repeated UserSignature signatures = 2;
+  google.protobuf.FieldMask read_mask = 3;
+}
+
+message ExecuteTransactionResponse {
+  ExecutedTransaction transaction = 1;
+}
