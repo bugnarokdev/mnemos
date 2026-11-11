@@ -21,8 +21,14 @@ DEFAULT_RELEASE = f"https://github.com/bugnarokdev/mnemos/releases/download/{REL
 _REASON = ""
 
 # sha256 of each asset in the mnemos-native-v0.2.2 release (same values as its SHA256SUMS).
-# The release is built from the tagged commit; this table is filled in the commit after it.
-PINNED_SHA256: dict[str, str] = {}
+# The release is built and attested from the tagged commit 9587913; this commit only adds this table.
+PINNED_SHA256 = {
+    "mnemos_core-0.2.2-cp311-abi3-macosx_10_12_x86_64.whl": "2001b2203ef8020d83b80ad7e1c8ea752c3273157b4025f1b939f559a9e5cd7a",
+    "mnemos_core-0.2.2-cp311-abi3-macosx_11_0_arm64.whl": "02f4b02826011e288551a2b4e4b1eae7bc8a64a73d199ec77105bea3b23fb73b",
+    "mnemos_core-0.2.2-cp311-abi3-manylinux_2_34_aarch64.whl": "1efa959856d77c77ed0e69a811ca81c5cfa6745eec39e9c477d633fde73dae22",
+    "mnemos_core-0.2.2-cp311-abi3-manylinux_2_34_x86_64.whl": "2a3ce302d1d4e9c50357348f13f5b3f9e45fcb976792178a0fe2afd5ba3bd128",
+    "mnemos_core-0.2.2-cp311-abi3-win_amd64.whl": "3c2ab5981be702dfac7081f04b5e18aaf9aba5de46c464cd3fa2722a2fdaafa7",
+}
 
 
 def last_reason() -> str:
