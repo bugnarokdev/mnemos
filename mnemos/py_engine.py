@@ -29,6 +29,8 @@ DEFAULTS = {
     "package_id": "",
     "index_object_id": "",
     "network": "testnet",
+    "read_source": "auto",
+    "graphql_max_lag": 100,
 }
 
 
@@ -42,6 +44,7 @@ def load_file_config(hermes_home: str | os.PathLike[str]) -> dict[str, Any]:
     merged = dict(DEFAULTS)
     merged.update({key: value for key, value in stored.items() if key in DEFAULTS or key == "epochs"})
     merged["epochs"] = int(merged.get("epochs") or DEFAULTS["epochs"])
+    merged["graphql_max_lag"] = int(merged.get("graphql_max_lag", DEFAULTS["graphql_max_lag"]))
     return merged
 
 
@@ -79,8 +82,10 @@ def ensure_package_id(hermes_home: str | os.PathLike[str], config: dict[str, Any
     index_id = str(config.get("index_object_id") or "").strip()
     if config.get("package_id") or not index_id:
         return str(config.get("package_id") or "")
+    from .reads import get_object
+
     try:
-        obj = graphql_object(config.get("graphql_url") or DEFAULTS["graphql_url"], index_id, timeout=timeout)
+        obj = get_object({**DEFAULTS, **config}, index_id, timeout=timeout)
     except Exception:
         return ""
     repr_ = (((obj.get("asMoveObject") or {}).get("contents") or {}).get("type") or {}).get("repr") or ""
@@ -230,8 +235,9 @@ class Engine:
         object_id = (object_id or self._config.get("index_object_id") or "").strip()
         if not object_id:
             raise RuntimeError("index object id is required")
-        index = graphql_object(self._config["graphql_url"], object_id)
-        contents = (((index or {}).get("asMoveObject") or {}).get("contents") or {}).get("json") or {}
+        from .reads import memory_index
+
+        _index, contents = memory_index(self._config, object_id)
         pubkey = chain.as_bytes(contents.get("pubkey"))
         if pubkey == self._keys["pubkey"]:
             read_keys = self._keys
@@ -345,12 +351,15 @@ class Engine:
         checks.append({"name": "local_store", "ok": True, "detail": f"{stored} entries, {pending} unsynced"})
         checks.append(self._probe("walrus_publisher", self._config["walrus_publisher"].rstrip("/") + "/v1/api"))
         checks.append(self._probe_graphql())
+        checks.append(self._probe_freshness())
         index_id = str(self._config.get("index_object_id") or "")
         if index_id:
             try:
-                obj = graphql_object(self._config["graphql_url"], index_id, timeout=8)
-                ok = bool(obj)
-                detail = "readable" if ok else "missing"
+                from .reads import memory_index
+
+                obj, _contents = memory_index(self._config, index_id, timeout=8)
+                ok = True
+                detail = f"readable via {obj.get('source', 'grpc')}"
             except Exception as exc:
                 ok = False
                 detail = str(exc)
@@ -411,6 +420,15 @@ class Engine:
         except Exception as exc:
             return {"name": name, "ok": False, "detail": str(exc)}
 
+    def _probe_freshness(self) -> dict[str, Any]:
+        from .reads import check_graphql_fresh
+
+        try:
+            info = check_graphql_fresh(self._config, timeout=8)
+            return {"name": "graphql_fresh", "ok": True, "detail": f"{info['lag']} checkpoints behind the fullnode"}
+        except Exception as exc:
+            return {"name": "graphql_fresh", "ok": False, "detail": f"{exc} (reads use the fullnode)"}
+
     def _probe_graphql(self) -> dict[str, Any]:
         try:
             data = graphql(self._config["graphql_url"], "{ chainIdentifier }", timeout=8)
@@ -435,7 +453,7 @@ def _tokens(query: str) -> list[str]:
 
 
 def http_request(method: str, url: str, data: bytes | None = None, timeout: float = 30, headers: dict | None = None):
-    merged = {"User-Agent": "mnemos/0.2.2"}
+    merged = {"User-Agent": "mnemos/0.2.3"}
     if headers:
         merged.update(headers)
     req = urllib.request.Request(url, data=data, method=method, headers=merged)

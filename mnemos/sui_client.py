@@ -48,15 +48,17 @@ def _read_varint(data: bytes, pos: int) -> tuple[int, int]:
         shift += 7
 
 
-def parse_service_info(data: bytes) -> dict[str, str]:
-    """Read ``chain_id`` (1) and ``chain`` (2) from a GetServiceInfoResponse."""
-    out: dict[str, str] = {}
+def parse_service_info(data: bytes) -> dict[str, Any]:
+    """Read ``chain_id`` (1), ``chain`` (2) and ``checkpoint_height`` (4) from a GetServiceInfoResponse."""
+    out: dict[str, Any] = {}
     pos = 0
     while pos < len(data):
         key, pos = _read_varint(data, pos)
         field, wire = key >> 3, key & 7
         if wire == 0:
-            _, pos = _read_varint(data, pos)
+            value, pos = _read_varint(data, pos)
+            if field == 4:
+                out["checkpoint_height"] = value
         elif wire == 1:
             pos += 8
         elif wire == 5:
@@ -76,13 +78,17 @@ def parse_service_info(data: bytes) -> dict[str, str]:
     return out
 
 
-def service_info(channel: grpc.Channel, timeout: float = 15) -> dict[str, str]:
+def service_info(channel: grpc.Channel, timeout: float = 15) -> dict[str, Any]:
     call = channel.unary_unary(
         _SERVICE_INFO,
         request_serializer=lambda _request: b"",
         response_deserializer=parse_service_info,
     )
     return call(None, timeout=timeout)
+
+
+class ChainError(RuntimeError):
+    """sui_rpc is not Sui testnet, or its chain id could not be read. Never retried elsewhere."""
 
 
 def check_rpc(rpc_url: str) -> None:
@@ -95,11 +101,11 @@ def require_testnet(channel: grpc.Channel, rpc_url: str) -> None:
     try:
         info = service_info(channel)
     except Exception as exc:
-        raise RuntimeError(f"refusing to sign: could not read the chain id of {rpc_url} ({exc.__class__.__name__})") from exc
+        raise ChainError(f"refusing to sign: could not read the chain id of {rpc_url} ({exc.__class__.__name__})") from exc
     chain_id = info.get("chain_id") or ""
     if chain_id != TESTNET_CHAIN_ID:
         name = info.get("chain") or "unknown"
-        raise RuntimeError(
+        raise ChainError(
             f"refusing to sign: {rpc_url} is on chain {name} ({chain_id or 'no chain id'}), "
             "Mnemos only writes to Sui testnet"
         )
@@ -151,10 +157,10 @@ def _input_owned(object_id: str, version: int, digest: str) -> pb.Input:
     )
 
 
-def resolve_owned(graphql_url: str, object_id: str) -> pb.Input:
-    from .py_engine import graphql_object
+def resolve_owned(config: dict[str, Any], object_id: str) -> pb.Input:
+    from .reads import get_object
 
-    obj = graphql_object(graphql_url, object_id)
+    obj = get_object(config, object_id)
     return _input_owned(object_id, int(obj["version"]), obj["digest"])
 
 
@@ -201,6 +207,18 @@ def execute(
     sign_seed: bytes,
     budget: int,
 ) -> str:
+    return execute_with_effects(rpc_url, sender, inputs, commands, sign_seed, budget)["digest"]
+
+
+def execute_with_effects(
+    rpc_url: str,
+    sender: str,
+    inputs: list[pb.Input],
+    commands: list[pb.Command],
+    sign_seed: bytes,
+    budget: int,
+) -> dict[str, Any]:
+    """Sign and execute; return the digest and the objects the transaction created."""
     kind = pb.TransactionKind(
         kind=pb.PROGRAMMABLE_TRANSACTION,
         programmable_transaction=pb.ProgrammableTransaction(inputs=inputs, commands=commands),
@@ -250,21 +268,18 @@ def execute(
     digest = done.digest or done.effects.transaction_digest or executed.digest
     if not digest:
         raise RuntimeError("Sui execution returned no digest")
-    return digest
+    created = [
+        {"object_id": change.object_id, "object_type": change.object_type}
+        for change in done.effects.changed_objects
+        if change.id_operation == 2
+    ]
+    return {"digest": digest, "created": created}
 
 
-def find_owned(graphql_url: str, owner: str, type_suffix: str) -> dict[str, Any] | None:
-    from .py_engine import graphql
+def find_owned(config: dict[str, Any], owner: str, type_suffix: str) -> dict[str, Any] | None:
+    from .reads import owned
 
-    query = """
-    query($owner: SuiAddress!, $type: String!) {
-      objects(first: 10, filter: { owner: $owner, type: $type }) {
-        nodes { address asMoveObject { contents { json } } }
-      }
-    }
-    """
-    data = graphql(graphql_url, query, {"owner": owner, "type": type_suffix})
-    nodes = (((data.get("data") or {}).get("objects") or {}).get("nodes")) or []
+    nodes = owned(config, owner, type_suffix)
     if not nodes:
         return None
     node = nodes[-1]
@@ -272,11 +287,7 @@ def find_owned(graphql_url: str, owner: str, type_suffix: str) -> dict[str, Any]
     return {"address": node.get("address"), "contents": contents}
 
 
-def read_move_json(graphql_url: str, object_id: str) -> dict[str, Any]:
-    from .py_engine import graphql_object
+def read_move_json(config: dict[str, Any], object_id: str, check_package: bool = False) -> dict[str, Any]:
+    from .reads import memory_index
 
-    obj = graphql_object(graphql_url, object_id)
-    contents = ((obj.get("asMoveObject") or {}).get("contents") or {}).get("json")
-    if not isinstance(contents, dict):
-        raise RuntimeError(f"Sui object {object_id} has no Move content")
-    return contents
+    return memory_index(config, object_id, check_package=check_package)[1]

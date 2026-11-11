@@ -68,7 +68,7 @@ def read_chain_fresh(engine, index_id: str) -> dict[str, Any]:
     local = int(_meta(engine._db, "chain_version", "0") or "0")
     latest = None
     for attempt in range(8):
-        contents = _sui().read_move_json(engine._config["graphql_url"], index_id)
+        contents = _sui().read_move_json(engine._config, index_id, check_package=True)
         parsed = _parse_index(contents)
         latest = parsed
         if parsed["version"] >= local:
@@ -227,7 +227,7 @@ def _mark(engine, content_hash: str, entries: list[dict[str, Any]]) -> None:
 def _append(engine, package_id: str, index_id: str, blob_id: str, session_id: str, content: bytes, prev: bytes, signature: bytes, version: int) -> str:
     sui = _sui()
     inputs = [
-        sui.resolve_owned(engine._config["graphql_url"], index_id),
+        sui.resolve_owned(engine._config, index_id),
         sui._input_pure(sui.pure_vec_u8(blob_id.encode("utf-8"))),
         sui._input_pure(sui.pure_vec_u8(session_id.encode("utf-8"))),
         sui._input_pure(sui.pure_vec_u8(content)),
@@ -251,7 +251,7 @@ def init_chain(engine, modules_json: str) -> dict[str, Any]:
     address = engine.sui_address()
     print(f"mnemos: sui address {address}", file=sys.stderr, flush=True)
     _sui().check_rpc(engine._config["sui_rpc"])
-    funded = fund_if_needed(engine._config["faucet_url"], engine._config["graphql_url"], address, 200_000_000)
+    funded = fund_if_needed(engine._config, address, 200_000_000)
     print("mnemos: gas ready", file=sys.stderr, flush=True)
     if not engine._config.get("package_id"):
         print("mnemos: publishing MemoryIndex", file=sys.stderr, flush=True)
@@ -261,15 +261,15 @@ def init_chain(engine, modules_json: str) -> dict[str, Any]:
         sui = _sui()
         inputs = [sui._input_pure(sui.bcs_address(address))]
         commands = [sui.publish_command(modules, dependencies), sui.transfer_command(0, 0)]
-        digest = sui.execute(engine._config["sui_rpc"], address, inputs, commands, _sui_seed(engine), 100_000_000)
-        package_id = _wait_package(engine, address)
+        done = sui.execute_with_effects(engine._config["sui_rpc"], address, inputs, commands, _sui_seed(engine), 100_000_000)
+        package_id = _created(done, lambda kind: kind == "package") or _wait_package(engine, address)
         engine._config["package_id"] = package_id
-        print(f"mnemos: package {package_id} ({digest})", file=sys.stderr, flush=True)
+        print(f"mnemos: package {package_id} ({done['digest']})", file=sys.stderr, flush=True)
     if not engine._config.get("index_object_id"):
         print("mnemos: creating MemoryIndex", file=sys.stderr, flush=True)
         sui = _sui()
         inputs = [sui._input_pure(sui.pure_vec_u8(engine._keys["pubkey"]))]
-        digest = sui.execute(
+        done = sui.execute_with_effects(
             engine._config["sui_rpc"],
             address,
             inputs,
@@ -277,9 +277,13 @@ def init_chain(engine, modules_json: str) -> dict[str, Any]:
             _sui_seed(engine),
             30_000_000,
         )
-        index_id = _wait_index(engine, address, engine._config["package_id"])
+        suffix = "::memory_index::MemoryIndex"
+        index_id = _created(done, lambda kind: kind.endswith(suffix))
+        if not index_id:
+            raise RuntimeError(f"create transaction {done['digest']} did not create a MemoryIndex")
+        _wait_visible(engine, index_id)
         engine._config["index_object_id"] = index_id
-        print(f"mnemos: index {index_id} ({digest})", file=sys.stderr, flush=True)
+        print(f"mnemos: index {index_id} ({done['digest']})", file=sys.stderr, flush=True)
     return {
         "package_id": engine._config.get("package_id") or "",
         "index_object_id": engine._config.get("index_object_id") or "",
@@ -289,6 +293,28 @@ def init_chain(engine, modules_json: str) -> dict[str, Any]:
     }
 
 
+def _created(done: dict[str, Any], match) -> str:
+    """The one created object whose type matches, from the transaction effects."""
+    found = [item["object_id"] for item in done.get("created") or [] if match(str(item.get("object_type") or ""))]
+    if len(found) > 1:
+        raise RuntimeError(f"transaction {done.get('digest')} created {len(found)} matching objects")
+    return found[0] if found else ""
+
+
+def _wait_visible(engine, object_id: str) -> None:
+    from .reads import get_object
+
+    last: Exception | None = None
+    for _ in range(20):
+        try:
+            get_object(engine._config, object_id)
+            return
+        except Exception as exc:
+            last = exc
+            time.sleep(1)
+    raise RuntimeError(f"object {object_id} was not readable after creation ({last})")
+
+
 def _wait_package(engine, owner: str) -> str:
     for _ in range(20):
         found = None
@@ -296,7 +322,7 @@ def _wait_package(engine, owner: str) -> str:
             "0x2::package::UpgradeCap",
             "0x0000000000000000000000000000000000000000000000000000000000000002::package::UpgradeCap",
         ):
-            found = _sui().find_owned(engine._config["graphql_url"], owner, type_name)
+            found = _sui().find_owned(engine._config, owner, type_name)
             if found:
                 break
         if found:
@@ -307,20 +333,10 @@ def _wait_package(engine, owner: str) -> str:
     raise RuntimeError("UpgradeCap was not visible after publish")
 
 
-def _wait_index(engine, owner: str, package_id: str) -> str:
-    suffix = f"{package_id}::memory_index::MemoryIndex"
-    for _ in range(20):
-        found = _sui().find_owned(engine._config["graphql_url"], owner, suffix)
-        if found and found.get("address"):
-            return str(found["address"])
-        time.sleep(1)
-    raise RuntimeError("MemoryIndex was not visible after create")
-
-
 def faucet(engine) -> dict[str, Any]:
     from .faucet import fund_if_needed
 
-    funded = fund_if_needed(engine._config["faucet_url"], engine._config["graphql_url"], engine.sui_address(), 0)
+    funded = fund_if_needed(engine._config, engine.sui_address(), 0)
     return {"sui_address": engine.sui_address(), "faucet": funded}
 
 

@@ -30,7 +30,15 @@ Le fait est chiffré au repos hors de la machine, mais le rappel lit le cache lo
 
 ## Le diagnostic dit que l'index manque
 
-`index_object_id` est vide, ou GraphQL ne voit pas encore l'objet. `init` attend l'objet après l'inclusion de la transaction dans un checkpoint. Si vous avez collé un identifiant, vérifiez que le réseau est `testnet` et que les URL RPC et GraphQL correspondent à ce réseau.
+`index_object_id` est vide, ou le nœud complet déclare l'objet introuvable. `init` prend l'identifiant dans les effets de la transaction et attend que le nœud le renvoie. Si vous avez collé un identifiant, vérifiez que le réseau est `testnet` et que `sui_rpc` pointe vers un nœud testnet.
+
+## `GraphQL is N checkpoints behind the fullnode (limit 100); refusing a stale read`
+
+La lecture sur le nœud complet a échoué et le repli GraphQL a été refusé parce que son index est en retard. Rien n'a été lu ni écrit. La première partie du message dit pourquoi le nœud a échoué ; corrigez cela (en général `sui_rpc` injoignable) et relancez. N'augmentez `graphql_max_lag` que si vous acceptez des données plus anciennes ; `read_source: grpc` désactive complètement le repli.
+
+## `fullnode read failed (...) and cannot check GraphQL freshness`
+
+Aucune source n'était utilisable : le nœud a échoué et Mnemos n'a pas pu le comparer à GraphQL, il n'a donc pas fait confiance à GraphQL. Vérifiez l'accès réseau à `sui_rpc`. `hermes mnemos doctor` affiche séparément les contrôles `rpc` et `graphql_fresh`.
 
 ## `refusing to sign: ... Mnemos only writes to Sui testnet`
 

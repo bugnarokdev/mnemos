@@ -188,8 +188,30 @@ def test_package_id_is_recovered_from_index_type(monkeypatch, tmp_path):
     assert py_engine.package_id_from_type("0xabc::memory_index::MemoryIndex") == "0xabc"
     assert py_engine.package_id_from_type("0x2::coin::Coin") == ""
     obj = {"asMoveObject": {"contents": {"type": {"repr": "0xfeed::memory_index::MemoryIndex"}, "json": {}}}}
-    monkeypatch.setattr(py_engine, "graphql_object", lambda url, oid, timeout=8: obj)
+    from mnemos import reads
+
+    monkeypatch.setattr(reads, "get_object", lambda config, oid, timeout=8: obj)
     config = py_engine.load_file_config(tmp_path)
     config["index_object_id"] = "0x1"
     assert py_engine.ensure_package_id(tmp_path, config) == "0xfeed"
     assert py_engine.load_file_config(tmp_path)["package_id"] == "0xfeed"
+
+
+def test_graphql_only_native_core_is_ignored(monkeypatch, tmp_path):
+    import sys
+    import types
+
+    from mnemos import engine
+
+    old = types.ModuleType("mnemos_core")
+    old.Engine = lambda *args: (_ for _ in ()).throw(AssertionError("0.2.2 core must not open"))
+    old.public_identity = lambda secret: "{}"
+    old.core_version = lambda: "0.2.2"
+    monkeypatch.delenv("MNEMOS_BACKEND", raising=False)
+    monkeypatch.setitem(sys.modules, "mnemos_core", old)
+    opened = engine.open_engine(str(tmp_path / "db.sqlite"), "harbor-secret", {})
+    try:
+        assert opened.backend == "python"
+        assert "0.2.3" in opened.reason
+    finally:
+        opened.close()

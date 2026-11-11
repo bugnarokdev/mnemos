@@ -9,7 +9,7 @@ Les réglages non secrets sont dans `$HERMES_HOME/mnemos/config.json`. Les secre
 | `MNEMOS_SECRET` | oui | Phrase secrète. Argon2id (64 Mio, 3 passes) l'étire, puis HKDF-SHA256 dérive la clé XChaCha20-Poly1305, la graine Ed25519 des instantanés et, si aucune clé Sui n'est définie, la clé de gaz. Voir [sécurité](security.md). |
 | `MNEMOS_SUI_PRIVATE_KEY` | non | Clé de gaz optionnelle. L'extension Rust accepte le bech32 `suiprivkey`, le base64 du trousseau Sui, ou une graine hexadécimale de 32 octets. Le backend Python accepte une graine hexadécimale de 32 octets. Si vide, les deux dérivent la clé de gaz de `MNEMOS_SECRET`. |
 | `MNEMOS_BACKEND` | non | `python` force l'écrivain gRPC Python. Vide préfère `mnemos_core` quand il peut être chargé. |
-| `MNEMOS_NATIVE_AUTO` | non | Désactivé par défaut. `1` active le téléchargement de la wheel native depuis la release officielle `mnemos-native-v0.2.2` sur `https://github.com/bugnarokdev/mnemos`. L'URL n'est pas modifiable et la wheel doit correspondre à un sha256 épinglé. |
+| `MNEMOS_NATIVE_AUTO` | non | Désactivé par défaut. `1` active le téléchargement de la wheel native depuis la release officielle `mnemos-native-v0.2.3` sur `https://github.com/bugnarokdev/mnemos`. L'URL n'est pas modifiable et la wheel doit correspondre à un sha256 épinglé. |
 
 `hermes memory setup` demande ces deux secrets et `index_object_id`.
 
@@ -21,7 +21,9 @@ Les valeurs par défaut sont les points de terminaison publics du testnet.
 | --- | --- |
 | `network` | `testnet` |
 | `sui_rpc` | `https://fullnode.testnet.sui.io:443` (doit annoncer l'identifiant de chaîne de Sui testnet, sinon toute écriture est refusée) |
-| `graphql_url` | `https://graphql.testnet.sui.io/graphql` |
+| `graphql_url` | `https://graphql.testnet.sui.io/graphql` (repli pour les lectures seulement, quand la lecture sur le nœud échoue et que GraphQL est à jour) |
+| `read_source` | `auto` : lecture sur le nœud complet, repli GraphQL seulement s'il est dans la limite `graphql_max_lag`. `grpc` : nœud complet seul, jamais GraphQL |
+| `graphql_max_lag` | `100` checkpoints ; un GraphQL plus en retard sur le nœud est refusé |
 | `faucet_url` | `https://faucet.testnet.sui.io` |
 | `walrus_publisher` | `https://publisher.walrus-testnet.walrus.space` |
 | `walrus_aggregator` | `https://aggregator.walrus-testnet.walrus.space` |
@@ -29,7 +31,7 @@ Les valeurs par défaut sont les points de terminaison publics du testnet.
 | `package_id` | vide jusqu'à `hermes mnemos init` ; après une restauration il est lu depuis le type du MemoryIndex sur Sui |
 | `index_object_id` | vide jusqu'à init, ou un objet existant pour la restauration |
 
-`sui_rpc` est le nœud complet gRPC. Le JSON-RPC des nœuds publics est retiré. Un déploiement mainnet ultérieur peut pointer `sui_rpc` vers un autre point gRPC, y compris une URL dRPC, sans changer le code.
+`sui_rpc` est le nœud complet gRPC. Le JSON-RPC des nœuds publics est retiré. Un déploiement mainnet ultérieur peut pointer `sui_rpc` vers un autre point gRPC, y compris une URL dRPC, sans changer le code. C'est aussi la source de lecture principale ; voir [lectures et disponibilité](architecture.md#lectures-et-disponibilité).
 
 `epochs` est le nombre d'époques Walrus pendant lesquelles le publisher conserve chaque blob. Les époques de testnet sont courtes et le réseau peut être effacé. Ne traitez pas ces blobs comme durables.
 

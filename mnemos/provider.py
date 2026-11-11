@@ -362,7 +362,7 @@ class MnemosProvider(MemoryProvider):
     def save_config(self, values: dict[str, Any], hermes_home: str) -> None:
         allowed = {
             key: values[key]
-            for key in ("index_object_id", "package_id", "sui_rpc", "graphql_url", "walrus_publisher", "walrus_aggregator", "epochs", "network", "faucet_url")
+            for key in ("index_object_id", "package_id", "sui_rpc", "graphql_url", "walrus_publisher", "walrus_aggregator", "epochs", "network", "faucet_url", "read_source", "graphql_max_lag")
             if key in values
         }
         save_file_config(hermes_home, allowed)

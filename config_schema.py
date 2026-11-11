@@ -54,6 +54,23 @@ CONFIG_SCHEMA = {
             "label": "Sui GraphQL",
             "kind": "text",
             "default": "https://graphql.testnet.sui.io/graphql",
+            "description": "Fallback reader. Used only when the fullnode refuses a read and GraphQL is within graphql_max_lag checkpoints of it.",
+            "group": "network",
+        },
+        {
+            "key": "read_source",
+            "label": "Sui reads",
+            "kind": "text",
+            "default": "auto",
+            "description": "auto: fullnode gRPC, then GraphQL only if it is fresh. grpc: fullnode only.",
+            "group": "network",
+        },
+        {
+            "key": "graphql_max_lag",
+            "label": "GraphQL max lag (checkpoints)",
+            "kind": "text",
+            "default": "100",
+            "description": "A GraphQL fallback read is refused when the indexer is further behind the fullnode than this.",
             "group": "network",
         },
         {

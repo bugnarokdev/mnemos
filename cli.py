@@ -122,16 +122,17 @@ def _init(bytecode_path: str) -> None:
 def _history(object_id: str, verify: bool, as_json: bool) -> None:
     """List or verify the MemoryIndex history. Needs no secret."""
     from .mnemos import history
-    from .mnemos.py_engine import graphql_object, load_file_config, walrus_get
+    from .mnemos.py_engine import load_file_config, walrus_get
+    from .mnemos.reads import memory_index
 
     config = load_file_config(_home())
     object_id = (object_id or config.get("index_object_id") or "").strip()
     if not object_id:
         raise SystemExit("No MemoryIndex: pass --object-id or run `hermes mnemos init`.")
-    obj = graphql_object(config["graphql_url"], object_id)
-    contents = ((obj.get("asMoveObject") or {}).get("contents") or {}).get("json")
-    if not isinstance(contents, dict):
-        raise SystemExit(f"Sui object {object_id} has no Move content")
+    try:
+        _obj, contents = memory_index(config, object_id)
+    except Exception as exc:
+        raise SystemExit(str(exc)) from exc
     index = history.parse_index(contents)
     if not verify:
         rows = history.list_history(index)

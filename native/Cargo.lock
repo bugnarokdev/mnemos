@@ -990,7 +990,7 @@ dependencies = [
 
 [[package]]
 name = "mnemos_core"
-version = "0.2.2"
+version = "0.2.3"
 dependencies = [
  "anyhow",
  "argon2",
@@ -1000,6 +1000,7 @@ dependencies = [
  "getrandom 0.2.17",
  "hex",
  "hkdf",
+ "prost-types",
  "pyo3",
  "reqwest",
  "rusqlite",
@@ -1011,6 +1012,7 @@ dependencies = [
  "sui-sdk-types",
  "sui-transaction-builder",
  "tokio",
+ "tonic",
 ]
 
 [[package]]

@@ -135,6 +135,12 @@ fn open_blob_text(secret: &str, blob_hex: &str) -> PyResult<String> {
     String::from_utf8(plain).map_err(py_err)
 }
 
+/// Version of this native core, checked by the Python adapter.
+#[pyfunction]
+fn core_version() -> &'static str {
+    env!("CARGO_PKG_VERSION")
+}
+
 /// Public identity derived from a secret, for cross-backend checks.
 #[pyfunction]
 fn public_identity(secret: &str) -> PyResult<String> {
@@ -165,5 +171,6 @@ fn mnemos_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(seal_blob_hex, m)?)?;
     m.add_function(wrap_pyfunction!(open_blob_text, m)?)?;
     m.add_function(wrap_pyfunction!(public_identity, m)?)?;
+    m.add_function(wrap_pyfunction!(core_version, m)?)?;
     Ok(())
 }

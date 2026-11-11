@@ -3,6 +3,7 @@ syntax = "proto3";
 package sui.rpc.v2;
 
 import "google/protobuf/field_mask.proto";
+import "google/protobuf/struct.proto";
 
 // Minimal subset of sui.rpc.v2 used to simulate (gas selection) and execute.
 // Field numbers match the public fullnode protocol.
@@ -127,6 +128,14 @@ message ExecutionStatus {
 message TransactionEffects {
   ExecutionStatus status = 4;
   string transaction_digest = 7;
+  repeated ChangedObject changed_objects = 12;
+}
+
+// id_operation: 2 = CREATED.
+message ChangedObject {
+  optional string object_id = 1;
+  optional int32 id_operation = 10;
+  optional string object_type = 11;
 }
 
 message ExecutedTransaction {
@@ -157,4 +166,68 @@ message ExecuteTransactionRequest {
 
 message ExecuteTransactionResponse {
   ExecutedTransaction transaction = 1;
+}
+
+// Reads from the fullnode (LedgerService / StateService), so flush, restore
+// and history do not depend on the GraphQL indexer alone.
+
+service LedgerService {
+  rpc GetObject(GetObjectRequest) returns (GetObjectResponse);
+}
+
+service StateService {
+  rpc ListOwnedObjects(ListOwnedObjectsRequest) returns (ListOwnedObjectsResponse);
+  rpc GetBalance(GetBalanceRequest) returns (GetBalanceResponse);
+}
+
+message Owner {
+  optional int32 kind = 1;
+  optional string address = 2;
+  optional uint64 version = 3;
+}
+
+message Object {
+  optional string object_id = 2;
+  optional uint64 version = 3;
+  optional string digest = 4;
+  Owner owner = 5;
+  optional string object_type = 6;
+  google.protobuf.Value json = 100;
+}
+
+message GetObjectRequest {
+  optional string object_id = 1;
+  optional uint64 version = 2;
+  google.protobuf.FieldMask read_mask = 3;
+}
+
+message GetObjectResponse {
+  Object object = 1;
+}
+
+message ListOwnedObjectsRequest {
+  optional string owner = 1;
+  optional uint32 page_size = 2;
+  optional bytes page_token = 3;
+  google.protobuf.FieldMask read_mask = 4;
+  optional string object_type = 5;
+}
+
+message ListOwnedObjectsResponse {
+  repeated Object objects = 1;
+  optional bytes next_page_token = 2;
+}
+
+message GetBalanceRequest {
+  optional string owner = 1;
+  optional string coin_type = 2;
+}
+
+message Balance {
+  optional string coin_type = 1;
+  optional uint64 balance = 3;
+}
+
+message GetBalanceResponse {
+  Balance balance = 1;
 }

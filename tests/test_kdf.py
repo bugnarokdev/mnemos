@@ -89,8 +89,10 @@ def _legacy_index(secret, tmp_path, monkeypatch):
             }
         ],
     }
-    obj = {"asMoveObject": {"contents": {"json": contents}}}
-    monkeypatch.setattr(py_engine, "graphql_object", lambda url, oid, timeout=20: obj)
+    from mnemos import reads
+
+    obj = {"asMoveObject": {"contents": {"type": {"repr": "0xabc::memory_index::MemoryIndex"}, "json": contents}}}
+    monkeypatch.setattr(reads, "get_object", lambda config, oid, timeout=20: obj)
     monkeypatch.setattr(py_engine, "walrus_get", lambda agg, blob_id, timeout=60: blob)
     return contents
 
@@ -105,7 +107,8 @@ def test_legacy_index_restores_read_only(tmp_path, monkeypatch):
         assert result["entries"] == 1 and result["kdf"] == "legacy" and result["read_only"] is True
         assert engine.recall("amber-fjord")["hits"][0]["text"] == "amber-fjord"
         engine.remember("new fact", "s")
-        monkeypatch.setattr(sui_client, "read_move_json", lambda url, oid: contents)
+        monkeypatch.setattr(sui_client, "read_move_json", lambda config, oid, check_package=False: contents)
+        monkeypatch.setattr(sui_client, "check_rpc", lambda url: None)
         monkeypatch.setattr(sui_client, "execute", lambda *a, **k: pytest.fail("must not sign"))
         with pytest.raises(RuntimeError, match="read-only"):
             py_chain.flush(engine)

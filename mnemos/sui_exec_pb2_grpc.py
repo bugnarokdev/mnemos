@@ -126,3 +126,199 @@ class TransactionExecutionService:
             timeout,
             metadata,
             _registered_method=True)
+
+
+class LedgerServiceStub:
+    """Reads from the fullnode (LedgerService / StateService), so flush, restore
+    and history do not depend on the GraphQL indexer alone.
+
+    """
+
+    def __init__(self, channel):
+        """Constructor.
+
+        Args:
+            channel: A grpc.Channel.
+        """
+        self.GetObject = channel.unary_unary(
+                '/sui.rpc.v2.LedgerService/GetObject',
+                request_serializer=sui__exec__pb2.GetObjectRequest.SerializeToString,
+                response_deserializer=sui__exec__pb2.GetObjectResponse.FromString,
+                _registered_method=True)
+
+
+class LedgerServiceServicer:
+    """Reads from the fullnode (LedgerService / StateService), so flush, restore
+    and history do not depend on the GraphQL indexer alone.
+
+    """
+
+    def GetObject(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+
+def add_LedgerServiceServicer_to_server(servicer, server):
+    rpc_method_handlers = {
+            'GetObject': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetObject,
+                    request_deserializer=sui__exec__pb2.GetObjectRequest.FromString,
+                    response_serializer=sui__exec__pb2.GetObjectResponse.SerializeToString,
+            ),
+    }
+    generic_handler = grpc.method_handlers_generic_handler(
+            'sui.rpc.v2.LedgerService', rpc_method_handlers)
+    server.add_generic_rpc_handlers((generic_handler,))
+    server.add_registered_method_handlers('sui.rpc.v2.LedgerService', rpc_method_handlers)
+
+
+ # This class is part of an EXPERIMENTAL API.
+class LedgerService:
+    """Reads from the fullnode (LedgerService / StateService), so flush, restore
+    and history do not depend on the GraphQL indexer alone.
+
+    """
+
+    @staticmethod
+    def GetObject(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/sui.rpc.v2.LedgerService/GetObject',
+            sui__exec__pb2.GetObjectRequest.SerializeToString,
+            sui__exec__pb2.GetObjectResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+
+class StateServiceStub:
+    """Missing associated documentation comment in .proto file."""
+
+    def __init__(self, channel):
+        """Constructor.
+
+        Args:
+            channel: A grpc.Channel.
+        """
+        self.ListOwnedObjects = channel.unary_unary(
+                '/sui.rpc.v2.StateService/ListOwnedObjects',
+                request_serializer=sui__exec__pb2.ListOwnedObjectsRequest.SerializeToString,
+                response_deserializer=sui__exec__pb2.ListOwnedObjectsResponse.FromString,
+                _registered_method=True)
+        self.GetBalance = channel.unary_unary(
+                '/sui.rpc.v2.StateService/GetBalance',
+                request_serializer=sui__exec__pb2.GetBalanceRequest.SerializeToString,
+                response_deserializer=sui__exec__pb2.GetBalanceResponse.FromString,
+                _registered_method=True)
+
+
+class StateServiceServicer:
+    """Missing associated documentation comment in .proto file."""
+
+    def ListOwnedObjects(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetBalance(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+
+def add_StateServiceServicer_to_server(servicer, server):
+    rpc_method_handlers = {
+            'ListOwnedObjects': grpc.unary_unary_rpc_method_handler(
+                    servicer.ListOwnedObjects,
+                    request_deserializer=sui__exec__pb2.ListOwnedObjectsRequest.FromString,
+                    response_serializer=sui__exec__pb2.ListOwnedObjectsResponse.SerializeToString,
+            ),
+            'GetBalance': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetBalance,
+                    request_deserializer=sui__exec__pb2.GetBalanceRequest.FromString,
+                    response_serializer=sui__exec__pb2.GetBalanceResponse.SerializeToString,
+            ),
+    }
+    generic_handler = grpc.method_handlers_generic_handler(
+            'sui.rpc.v2.StateService', rpc_method_handlers)
+    server.add_generic_rpc_handlers((generic_handler,))
+    server.add_registered_method_handlers('sui.rpc.v2.StateService', rpc_method_handlers)
+
+
+ # This class is part of an EXPERIMENTAL API.
+class StateService:
+    """Missing associated documentation comment in .proto file."""
+
+    @staticmethod
+    def ListOwnedObjects(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/sui.rpc.v2.StateService/ListOwnedObjects',
+            sui__exec__pb2.ListOwnedObjectsRequest.SerializeToString,
+            sui__exec__pb2.ListOwnedObjectsResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetBalance(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/sui.rpc.v2.StateService/GetBalance',
+            sui__exec__pb2.GetBalanceRequest.SerializeToString,
+            sui__exec__pb2.GetBalanceResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)

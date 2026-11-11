@@ -1,6 +1,6 @@
 [package]
 name = "mnemos_core"
-version = "0.2.2"
+version = "0.2.3"
 edition = "2021"
 description = "Native core for the Mnemos Hermes memory provider"
 license = "MIT"
@@ -33,6 +33,8 @@ sui-crypto = { version = "0.4", features = ["ed25519", "bech32"] }
 sui-rpc = "0.4"
 sui-sdk-types = { version = "0.4", features = ["serde", "hash"] }
 sui-transaction-builder = "0.4"
+prost-types = "0.14"
+tonic = { version = "0.14", default-features = false }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"] }
 
 [profile.release]

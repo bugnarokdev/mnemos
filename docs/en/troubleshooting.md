@@ -30,7 +30,15 @@ The fact is encrypted at rest off-box, but recall reads the local cache. After r
 
 ## Doctor says the index is missing
 
-`index_object_id` is empty, or GraphQL cannot see the object yet. `init` waits for the object after the transaction is in a checkpoint. If you pasted an id, check the network is `testnet` and the RPC and GraphQL URLs match that network.
+`index_object_id` is empty, or the fullnode reports the object as not found. `init` takes the id from the transaction effects and waits until the fullnode returns it. If you pasted an id, check the network is `testnet` and that `sui_rpc` points to a testnet fullnode.
+
+## `GraphQL is N checkpoints behind the fullnode (limit 100); refusing a stale read`
+
+The fullnode read failed and the GraphQL fallback was refused because its index is behind. Nothing was read or written. The first part of the message says why the fullnode read failed; fix that (usually `sui_rpc` is unreachable) and rerun. Raise `graphql_max_lag` only if you accept older data; `read_source: grpc` turns the fallback off entirely.
+
+## `fullnode read failed (...) and cannot check GraphQL freshness`
+
+Neither source could be used: the fullnode failed and Mnemos could not compare it with GraphQL, so it did not trust GraphQL. Check network access to `sui_rpc`. `hermes mnemos doctor` shows the `rpc` and `graphql_fresh` checks separately.
 
 ## `refusing to sign: ... Mnemos only writes to Sui testnet`
 

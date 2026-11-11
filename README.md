@@ -26,6 +26,7 @@ Mnemos is a memory provider plugin for Hermes Agent. Facts are encrypted on the 
 - **Yours alone.** XChaCha20-Poly1305 encryption with keys derived from `MNEMOS_SECRET`. Plaintext and the secret never leave the machine.
 - **Portable.** Wipe a profile or switch machines: `hermes mnemos restore` rebuilds the local cache from Walrus and Sui.
 - **Verifiable.** Every snapshot is hash-chained and Ed25519-signed. `hermes mnemos history --verify` checks the whole chain, without the secret.
+- **Available.** Reads come from the same Sui fullnode that executes writes. GraphQL is only a fallback, used when it is on testnet and within 100 checkpoints of the fullnode; a stale indexer is refused instead of trusted. [Why](docs/en/architecture.md#reads-and-availability).
 - **Fast.** Prefetch and recall read a local SQLite cache and never touch the network.
 - **Works out of the box.** A pure Python backend handles encryption and chain writes. The Rust core is optional and opt-in, and both produce the same ciphertext, content hash, and signature.
 
@@ -140,10 +141,10 @@ When a flush, checkpoint, restore, init, doctor, or history runs, Mnemos calls:
 
 - Walrus testnet publisher `https://publisher.walrus-testnet.walrus.space` (`PUT /v1/blobs`)
 - Walrus testnet aggregator `https://aggregator.walrus-testnet.walrus.space` (`GET /v1/blobs/<id>`)
-- Sui testnet gRPC `https://fullnode.testnet.sui.io:443`
-- Sui testnet GraphQL `https://graphql.testnet.sui.io/graphql`
+- Sui testnet gRPC `https://fullnode.testnet.sui.io:443` (writes and reads)
+- Sui testnet GraphQL `https://graphql.testnet.sui.io/graphql` (freshness check, and reads only when the fullnode read fails)
 - Sui testnet faucet `https://faucet.testnet.sui.io` during `hermes mnemos init` only
-- Opt-in only: the native wheel from `https://github.com/bugnarokdev/mnemos/releases/download/mnemos-native-v0.2.2/` when `MNEMOS_NATIVE_AUTO=1` and `mnemos_core` is not already installed. The URL is fixed and the wheel must match a sha256 pinned in `mnemos/native_wheel.py`; nothing else is fetched. Off by default.
+- Opt-in only: the native wheel from `https://github.com/bugnarokdev/mnemos/releases/download/mnemos-native-v0.2.3/` when `MNEMOS_NATIVE_AUTO=1` and `mnemos_core` is not already installed. The URL is fixed and the wheel must match a sha256 pinned in `mnemos/native_wheel.py`; nothing else is fetched. Off by default.
 
 Prefetch and recall do not use the network. There is no telemetry.
 

@@ -10,6 +10,7 @@ use serde_json::{json, Value};
 use sui_crypto::ed25519::Ed25519PrivateKey;
 use sui_crypto::SuiSigner;
 use sui_sdk_types::{Address, Identifier};
+use sui_rpc::field::{FieldMask, FieldMaskUtil};
 use sui_transaction_builder::{Function, ObjectInput, TransactionBuilder};
 
 use crate::chain::{
@@ -34,6 +35,8 @@ struct Config {
     index_object_id: String,
     network: String,
     sui_private_key: String,
+    read_source: String,
+    graphql_max_lag: u64,
 }
 
 pub struct Engine {
@@ -51,6 +54,7 @@ struct Head {
     head: [u8; 32],
     pubkey: [u8; 32],
     snapshots: Vec<OnChainSnap>,
+    source: &'static str,
 }
 
 struct OnChainSnap {
@@ -344,7 +348,7 @@ impl Engine {
         if object_id.is_empty() {
             return Err(anyhow!("index object id is required"));
         }
-        let chain = block_on(read_index(&self.cfg.graphql_url, &object_id))?;
+        let chain = block_on(read_index(&self.cfg, &object_id, false))?;
         let (enc_key, legacy) = if chain.pubkey == self.keys.pubkey {
             (self.keys.enc_key, false)
         } else if chain.pubkey == self.legacy_pubkey {
@@ -452,14 +456,18 @@ impl Engine {
         ];
         checks.push(block_on(probe_url("walrus_publisher", &format!("{}/v1/api", self.cfg.walrus_publisher.trim_end_matches('/')))));
         checks.push(block_on(probe_graphql(&self.cfg.graphql_url)));
+        checks.push(match block_on(check_graphql_fresh(&self.cfg)) {
+            Ok(lag) => json!({"name": "graphql_fresh", "ok": true, "detail": format!("{lag} checkpoints behind the fullnode")}),
+            Err(err) => json!({"name": "graphql_fresh", "ok": false, "detail": format!("{err} (reads use the fullnode)")}),
+        });
         if self.cfg.index_object_id.is_empty() {
             checks.push(json!({"name": "index_object", "ok": false, "detail": "unset"}));
         } else {
-            match block_on(read_index(&self.cfg.graphql_url, &self.cfg.index_object_id)) {
+            match block_on(read_index(&self.cfg, &self.cfg.index_object_id, false)) {
                 Ok(head) => checks.push(json!({
                     "name": "index_object",
                     "ok": head.pubkey == self.keys.pubkey,
-                    "detail": format!("version {} snapshots {}", head.version, head.snapshots.len()),
+                    "detail": format!("readable via {}, version {} snapshots {}", head.source, head.version, head.snapshots.len()),
                 })),
                 Err(err) => checks.push(json!({"name": "index_object", "ok": false, "detail": err.to_string()})),
             }
@@ -521,20 +529,13 @@ impl Engine {
         eprintln!("mnemos: gas ready");
         if self.cfg.package_id.is_empty() {
             eprintln!("mnemos: publishing MemoryIndex");
-            let package_id = block_on(publish_package(&self.cfg.sui_rpc, &self.sui_key, self.address, &self.cfg.graphql_url, modules_json))?;
+            let package_id = block_on(publish_package(&self.cfg, &self.sui_key, self.address, modules_json))?;
             eprintln!("mnemos: package {package_id}");
             self.cfg.package_id = package_id;
         }
         if self.cfg.index_object_id.is_empty() {
             eprintln!("mnemos: creating MemoryIndex");
-            let index_id = block_on(create_index(
-                &self.cfg.sui_rpc,
-                &self.sui_key,
-                self.address,
-                &self.cfg.graphql_url,
-                &self.cfg.package_id,
-                &self.keys.pubkey,
-            ))?;
+            let index_id = block_on(create_index(&self.cfg, &self.sui_key, self.address, &self.cfg.package_id, &self.keys.pubkey))?;
             self.cfg.index_object_id = index_id;
         }
         Ok(json!({
@@ -555,7 +556,7 @@ impl Engine {
             .unwrap_or(0);
         let mut latest: Option<Head> = None;
         for attempt in 0..8 {
-            let chain = block_on(read_index(&self.cfg.graphql_url, index_id))?;
+            let chain = block_on(read_index(&self.cfg, index_id, true))?;
             if chain.version as i64 >= local_version {
                 return Ok(chain);
             }
@@ -689,6 +690,8 @@ fn parse_config(raw: &str) -> Config {
         index_object_id: str_or(&value, "index_object_id", ""),
         network: str_or(&value, "network", "testnet"),
         sui_private_key: str_or(&value, "sui_private_key", ""),
+        read_source: str_or(&value, "read_source", "auto").to_lowercase(),
+        graphql_max_lag: u64_of(&value, "graphql_max_lag", GRAPHQL_MAX_LAG),
     }
 }
 
@@ -865,19 +868,22 @@ fn blob_id_of(payload: &Value) -> Option<String> {
         .or_else(|| payload["blobId"].as_str().map(str::to_string))
 }
 
-async fn read_index(graphql_url: &str, object_id: &str) -> Result<Head> {
-    let query = r#"
-        query($id: SuiAddress!) {
-          object(address: $id) {
-            address
-            asMoveObject { contents { json } }
-          }
+async fn read_index(cfg: &Config, object_id: &str, check_package: bool) -> Result<Head> {
+    let object = read_object(cfg, object_id).await?;
+    if !object.type_repr.ends_with("::memory_index::MemoryIndex") {
+        let kind = if object.type_repr.is_empty() { "non-Move object" } else { object.type_repr.as_str() };
+        return Err(anyhow!("Sui object {object_id} is a {kind}, not a MemoryIndex"));
+    }
+    if check_package && !cfg.package_id.is_empty() {
+        let owner = object.type_repr.split("::").next().unwrap_or("");
+        if norm_address(owner)? != norm_address(&cfg.package_id)? {
+            return Err(anyhow!("MemoryIndex {object_id} belongs to package {owner}, not {}", cfg.package_id));
         }
-    "#;
-    let value = graphql(graphql_url, query, json!({"id": object_id})).await?;
-    let contents = &value["data"]["object"]["asMoveObject"]["contents"]["json"];
-    if contents.is_null() {
-        return Err(anyhow!("Sui object {object_id} was not found or is not a Move object"));
+    }
+    let _ = object.version;
+    let contents = &object.json;
+    if !contents.is_object() {
+        return Err(anyhow!("Sui object {object_id} has no Move content"));
     }
     let pubkey = fixed32(&as_bytes(&contents["pubkey"])?)?;
     let head = if contents["head"].is_null() {
@@ -909,7 +915,7 @@ async fn read_index(graphql_url: &str, object_id: &str) -> Result<Head> {
         });
     }
     snapshots.sort_by_key(|snap| snap.version);
-    Ok(Head { version, head, pubkey, snapshots })
+    Ok(Head { version, head, pubkey, snapshots, source: object.source })
 }
 
 fn fixed32(bytes: &[u8]) -> Result<[u8; 32]> {
@@ -943,7 +949,7 @@ fn as_bytes(value: &Value) -> Result<Vec<u8>> {
     }
 }
 
-async fn sui_balance(graphql_url: &str, address: Address) -> Result<u64> {
+async fn graphql_balance(graphql_url: &str, address: Address) -> Result<u64> {
     let query = r#"
         query($a: SuiAddress!) {
           address(address: $a) { balance(coinType: "0x2::sui::SUI") { totalBalance } }
@@ -954,8 +960,18 @@ async fn sui_balance(graphql_url: &str, address: Address) -> Result<u64> {
     Ok(text.parse().unwrap_or(0))
 }
 
+async fn sui_balance(cfg: &Config, address: Address) -> Result<u64> {
+    match grpc_balance(cfg, address).await {
+        Ok(value) => Ok(value),
+        Err(fail) => {
+            fallback_allowed(cfg, "balance", fail).await?;
+            graphql_balance(&cfg.graphql_url, address).await
+        }
+    }
+}
+
 async fn fund_if_needed(cfg: &Config, address: Address, minimum: u64) -> Result<Value> {
-    let balance = sui_balance(&cfg.graphql_url, address).await.unwrap_or(0);
+    let balance = sui_balance(cfg, address).await.unwrap_or(0);
     if balance >= minimum && minimum > 0 {
         return Ok(json!({"funded": false, "balance": balance.to_string(), "sui_address": address.to_string()}));
     }
@@ -967,7 +983,7 @@ async fn fund_if_needed(cfg: &Config, address: Address, minimum: u64) -> Result<
         match request_faucet(&cfg.faucet_url, address).await {
             Ok(digest) => {
                 tokio::time::sleep(Duration::from_secs(2)).await;
-                let balance = sui_balance(&cfg.graphql_url, address).await.unwrap_or(0);
+                let balance = sui_balance(cfg, address).await.unwrap_or(0);
                 return Ok(json!({"funded": true, "digest": digest, "balance": balance.to_string(), "sui_address": address.to_string()}));
             }
             Err(err) => last = err.to_string(),
@@ -1076,6 +1092,11 @@ async fn check_rpc(rpc: &str) -> Result<()> {
 }
 
 async fn execute_tx(rpc: &str, signer: &Ed25519PrivateKey, tx: TransactionBuilder) -> Result<String> {
+    Ok(execute_tx_effects(rpc, signer, tx).await?.0)
+}
+
+/// Sign and execute; return the digest and the (id, type) of every created object.
+async fn execute_tx_effects(rpc: &str, signer: &Ed25519PrivateKey, tx: TransactionBuilder) -> Result<(String, Vec<(String, String)>)> {
     let mut client = sui_rpc::Client::new(rpc).map_err(|err| anyhow!("sui rpc: {err}"))?;
     require_testnet(&mut client, rpc).await?;
     let built = tx.build(&mut client).await.map_err(|err| anyhow!("transaction build: {err}"))?;
@@ -1083,15 +1104,34 @@ async fn execute_tx(rpc: &str, signer: &Ed25519PrivateKey, tx: TransactionBuilde
     let signature = signer.sign_transaction(&built).map_err(|err| anyhow!("sign: {err}"))?;
     let request = sui_rpc::proto::sui::rpc::v2::ExecuteTransactionRequest::default()
         .with_transaction(built)
-        .with_signatures(vec![signature.into()]);
-    client
+        .with_signatures(vec![signature.into()])
+        .with_read_mask(FieldMask::from_paths(["digest", "effects.status", "effects.changed_objects"]));
+    let reply = client
         .execute_transaction_and_wait_for_checkpoint(request, Duration::from_secs(60))
         .await
-        .map_err(|err| anyhow!("execute {digest}: {err}"))?;
-    Ok(digest)
+        .map_err(|err| anyhow!("execute {digest}: {err}"))?
+        .into_inner();
+    let mut created = Vec::new();
+    if let Some(effects) = reply.transaction.and_then(|done| done.effects) {
+        for change in effects.changed_objects {
+            if change.id_operation == Some(2) {
+                created.push((change.object_id.unwrap_or_default(), change.object_type.unwrap_or_default()));
+            }
+        }
+    }
+    Ok((digest, created))
 }
 
-async fn publish_package(rpc: &str, signer: &Ed25519PrivateKey, sender: Address, graphql_url: &str, modules_json: &str) -> Result<String> {
+fn one_created(digest: &str, created: &[(String, String)], matches: impl Fn(&str) -> bool) -> Result<Option<String>> {
+    let found: Vec<&String> = created.iter().filter(|(_, kind)| matches(kind)).map(|(id, _)| id).collect();
+    match found.len() {
+        0 => Ok(None),
+        1 => Ok(Some(found[0].clone())),
+        n => Err(anyhow!("transaction {digest} created {n} matching objects")),
+    }
+}
+
+async fn publish_package(cfg: &Config, signer: &Ed25519PrivateKey, sender: Address, modules_json: &str) -> Result<String> {
     let parsed: Value = serde_json::from_str(modules_json).context("bytecode json")?;
     let modules = parsed["modules"].as_array().context("modules")?;
     let mut bytecode = Vec::new();
@@ -1110,12 +1150,14 @@ async fn publish_package(rpc: &str, signer: &Ed25519PrivateKey, sender: Address,
     let cap = tx.publish(bytecode, dependencies);
     let recipient = tx.pure(&sender);
     tx.transfer_objects(vec![cap], recipient);
-    let digest = execute_tx(rpc, signer, tx).await?;
-    let package_id = wait_for_package(graphql_url, sender).await.with_context(|| format!("published in {digest} but the UpgradeCap was not indexed"))?;
-    Ok(package_id)
+    let (digest, created) = execute_tx_effects(&cfg.sui_rpc, signer, tx).await?;
+    if let Some(package_id) = one_created(&digest, &created, |kind| kind == "package")? {
+        return Ok(package_id);
+    }
+    wait_for_package(cfg, sender).await.with_context(|| format!("published in {digest} but the UpgradeCap was not visible"))
 }
 
-async fn create_index(rpc: &str, signer: &Ed25519PrivateKey, sender: Address, graphql_url: &str, package_id: &str, pubkey: &[u8; 32]) -> Result<String> {
+async fn create_index(cfg: &Config, signer: &Ed25519PrivateKey, sender: Address, package_id: &str, pubkey: &[u8; 32]) -> Result<String> {
     let package: Address = package_id.parse().context("package id")?;
     let mut tx = TransactionBuilder::new();
     tx.set_sender(sender);
@@ -1125,21 +1167,25 @@ async fn create_index(rpc: &str, signer: &Ed25519PrivateKey, sender: Address, gr
         Function::new(package, Identifier::from_static("memory_index"), Identifier::from_static("create")),
         vec![key_arg],
     );
-    let digest = execute_tx(rpc, signer, tx).await?;
-    let type_name = format!("{package_id}::memory_index::MemoryIndex");
-    wait_for_owned(graphql_url, sender, &type_name)
-        .await
-        .with_context(|| format!("create transaction {digest} did not yield a MemoryIndex"))
+    let (digest, created) = execute_tx_effects(&cfg.sui_rpc, signer, tx).await?;
+    let index_id = one_created(&digest, &created, |kind| kind.ends_with("::memory_index::MemoryIndex"))?
+        .ok_or_else(|| anyhow!("create transaction {digest} did not create a MemoryIndex"))?;
+    let mut last = String::new();
+    for _ in 0..20 {
+        match read_object(cfg, &index_id).await {
+            Ok(_) => return Ok(index_id),
+            Err(err) => last = err.to_string(),
+        }
+        tokio::time::sleep(Duration::from_secs(1)).await;
+    }
+    Err(anyhow!("MemoryIndex {index_id} from {digest} was not readable: {last}"))
 }
 
-async fn wait_for_package(graphql_url: &str, owner: Address) -> Result<String> {
-    let types = ["0x2::package::UpgradeCap", "0x0000000000000000000000000000000000000000000000000000000000000002::package::UpgradeCap"];
+async fn wait_for_package(cfg: &Config, owner: Address) -> Result<String> {
     for _ in 0..20 {
-        for type_name in types {
-            if let Some(object) = owned_json(graphql_url, owner, type_name).await? {
-                if let Some(package) = object["package"].as_str() {
-                    return Ok(package.to_string());
-                }
+        for object in read_owned(cfg, owner, "0x2::package::UpgradeCap").await? {
+            if let Some(package) = object.json["package"].as_str() {
+                return Ok(package.to_string());
             }
         }
         tokio::time::sleep(Duration::from_secs(1)).await;
@@ -1147,33 +1193,316 @@ async fn wait_for_package(graphql_url: &str, owner: Address) -> Result<String> {
     Err(anyhow!("UpgradeCap was not visible"))
 }
 
-async fn wait_for_owned(graphql_url: &str, owner: Address, type_name: &str) -> Result<String> {
-    for _ in 0..20 {
-        let query = r#"
-            query($owner: SuiAddress!, $type: String!) {
-              objects(first: 10, filter: { owner: $owner, type: $type }) {
-                nodes { address }
-              }
-            }
-        "#;
-        let value = graphql(graphql_url, query, json!({"owner": owner.to_string(), "type": type_name})).await?;
-        if let Some(address) = value["data"]["objects"]["nodes"].as_array().and_then(|nodes| nodes.last()).and_then(|node| node["address"].as_str()) {
-            return Ok(address.to_string());
-        }
-        tokio::time::sleep(Duration::from_secs(1)).await;
-    }
-    Err(anyhow!("object {type_name} was not visible"))
+// ---- Reads: fullnode gRPC first, GraphQL only when provably fresh ----
+
+const GRAPHQL_MAX_LAG: u64 = 100;
+const VERIFY_TTL: Duration = Duration::from_secs(300);
+
+struct ChainObject {
+    version: u64,
+    type_repr: String,
+    json: Value,
+    source: &'static str,
 }
 
-async fn owned_json(graphql_url: &str, owner: Address, type_name: &str) -> Result<Option<Value>> {
-    let query = r#"
-        query($owner: SuiAddress!, $type: String!) {
-          objects(first: 10, filter: { owner: $owner, type: $type }) {
-            nodes { address asMoveObject { contents { json } } }
-          }
+enum ReadFail {
+    NotFound(String),
+    Chain(anyhow::Error),
+    Other(anyhow::Error),
+}
+
+impl From<ReadFail> for anyhow::Error {
+    fn from(fail: ReadFail) -> Self {
+        match fail {
+            ReadFail::NotFound(text) => anyhow!(text),
+            ReadFail::Chain(err) | ReadFail::Other(err) => err,
         }
-    "#;
-    let value = graphql(graphql_url, query, json!({"owner": owner.to_string(), "type": type_name})).await?;
-    let node = value["data"]["objects"]["nodes"].as_array().and_then(|nodes| nodes.last()).cloned();
-    Ok(node.map(|node| node["asMoveObject"]["contents"]["json"].clone()))
+    }
+}
+
+fn norm_address(text: &str) -> Result<String> {
+    let raw = text.trim().trim_start_matches("0x").trim_start_matches("0X").to_lowercase();
+    if raw.is_empty() || raw.len() > 64 || !raw.chars().all(|ch| ch.is_ascii_hexdigit()) {
+        return Err(anyhow!("not a Sui address: {text:?}"));
+    }
+    Ok(format!("0x{raw:0>64}"))
+}
+
+fn verified_rpcs() -> &'static std::sync::Mutex<std::collections::HashMap<String, std::time::Instant>> {
+    static CACHE: std::sync::OnceLock<std::sync::Mutex<std::collections::HashMap<String, std::time::Instant>>> =
+        std::sync::OnceLock::new();
+    CACHE.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()))
+}
+
+/// A client for sui_rpc after confirming it is Sui testnet (cached a few minutes).
+async fn read_client(cfg: &Config) -> std::result::Result<sui_rpc::Client, ReadFail> {
+    let mut client = sui_rpc::Client::new(&cfg.sui_rpc).map_err(|err| ReadFail::Other(anyhow!("sui rpc: {err}")))?;
+    let fresh = verified_rpcs()
+        .lock()
+        .unwrap_or_else(|err| err.into_inner())
+        .get(&cfg.sui_rpc)
+        .map(|at| at.elapsed() < VERIFY_TTL)
+        .unwrap_or(false);
+    if !fresh {
+        require_testnet(&mut client, &cfg.sui_rpc).await.map_err(ReadFail::Chain)?;
+        verified_rpcs()
+            .lock()
+            .unwrap_or_else(|err| err.into_inner())
+            .insert(cfg.sui_rpc.clone(), std::time::Instant::now());
+    }
+    Ok(client)
+}
+
+fn object_mask() -> FieldMask {
+    FieldMask::from_paths(["object_id", "version", "digest", "object_type", "json"])
+}
+
+fn proto_json(value: &prost_types::Value) -> Value {
+    use prost_types::value::Kind;
+    match &value.kind {
+        None | Some(Kind::NullValue(_)) => Value::Null,
+        Some(Kind::BoolValue(flag)) => Value::Bool(*flag),
+        Some(Kind::NumberValue(number)) => serde_json::Number::from_f64(*number).map(Value::Number).unwrap_or(Value::Null),
+        Some(Kind::StringValue(text)) => Value::String(text.clone()),
+        Some(Kind::ListValue(list)) => Value::Array(list.values.iter().map(proto_json).collect()),
+        Some(Kind::StructValue(map)) => Value::Object(map.fields.iter().map(|(key, item)| (key.clone(), proto_json(item))).collect()),
+    }
+}
+
+fn chain_object(object: sui_rpc::proto::sui::rpc::v2::Object, source: &'static str) -> ChainObject {
+    ChainObject {
+        version: object.version.unwrap_or(0),
+        type_repr: object.object_type.clone().unwrap_or_default(),
+        json: object.json.as_deref().map(proto_json).unwrap_or(Value::Null),
+        source,
+    }
+}
+
+async fn grpc_object(cfg: &Config, object_id: &str) -> std::result::Result<ChainObject, ReadFail> {
+    let mut client = read_client(cfg).await?;
+    let request = sui_rpc::proto::sui::rpc::v2::GetObjectRequest::default()
+        .with_object_id(object_id)
+        .with_read_mask(object_mask());
+    let reply = tokio::time::timeout(Duration::from_secs(20), client.ledger_client().get_object(request))
+        .await
+        .map_err(|_| ReadFail::Other(anyhow!("fullnode GetObject timed out")))?;
+    let reply = match reply {
+        Ok(reply) => reply.into_inner(),
+        Err(status) if status.code() == tonic::Code::NotFound => {
+            return Err(ReadFail::NotFound(format!("Sui object {object_id} was not found")))
+        }
+        Err(status) => return Err(ReadFail::Other(anyhow!("fullnode GetObject: {:?} {}", status.code(), status.message()))),
+    };
+    let object = reply.object.ok_or_else(|| ReadFail::Other(anyhow!("fullnode returned no object")))?;
+    let returned = object.object_id.clone().unwrap_or_default();
+    let same = matches!((norm_address(&returned), norm_address(object_id)), (Ok(a), Ok(b)) if a == b);
+    if !same {
+        return Err(ReadFail::Other(anyhow!("fullnode returned object {returned} for {object_id}")));
+    }
+    Ok(chain_object(object, "grpc"))
+}
+
+async fn grpc_owned(cfg: &Config, owner: Address, type_name: &str) -> std::result::Result<Vec<ChainObject>, ReadFail> {
+    let mut client = read_client(cfg).await?;
+    let mut out = Vec::new();
+    let mut token: Option<Vec<u8>> = None;
+    for _ in 0..20 {
+        let mut request = sui_rpc::proto::sui::rpc::v2::ListOwnedObjectsRequest::default()
+            .with_owner(owner.to_string())
+            .with_object_type(type_name)
+            .with_page_size(50u32)
+            .with_read_mask(object_mask());
+        if let Some(page) = token.take() {
+            request = request.with_page_token(page);
+        }
+        let reply = tokio::time::timeout(Duration::from_secs(20), client.state_client().list_owned_objects(request))
+            .await
+            .map_err(|_| ReadFail::Other(anyhow!("fullnode ListOwnedObjects timed out")))?
+            .map_err(|status| ReadFail::Other(anyhow!("fullnode ListOwnedObjects: {:?} {}", status.code(), status.message())))?
+            .into_inner();
+        out.extend(reply.objects.into_iter().map(|object| chain_object(object, "grpc")));
+        match reply.next_page_token {
+            Some(page) if !page.is_empty() => token = Some(page.to_vec()),
+            _ => break,
+        }
+    }
+    Ok(out)
+}
+
+async fn grpc_balance(cfg: &Config, owner: Address) -> std::result::Result<u64, ReadFail> {
+    let mut client = read_client(cfg).await?;
+    let request = sui_rpc::proto::sui::rpc::v2::GetBalanceRequest::default()
+        .with_owner(owner.to_string())
+        .with_coin_type("0x2::sui::SUI");
+    let reply = tokio::time::timeout(Duration::from_secs(20), client.state_client().get_balance(request))
+        .await
+        .map_err(|_| ReadFail::Other(anyhow!("fullnode GetBalance timed out")))?
+        .map_err(|status| ReadFail::Other(anyhow!("fullnode GetBalance: {:?} {}", status.code(), status.message())))?
+        .into_inner();
+    Ok(reply.balance.and_then(|balance| balance.balance).unwrap_or(0))
+}
+
+/// Ok(lag) when GraphQL is on Sui testnet and within graphql_max_lag of the fullnode.
+async fn check_graphql_fresh(cfg: &Config) -> Result<u64> {
+    let mut client = sui_rpc::Client::new(&cfg.sui_rpc).map_err(|err| anyhow!("sui rpc: {err}"))?;
+    let info = tokio::time::timeout(
+        Duration::from_secs(10),
+        client.ledger_client().get_service_info(sui_rpc::proto::sui::rpc::v2::GetServiceInfoRequest::default()),
+    )
+    .await
+    .map_err(|_| anyhow!("cannot check GraphQL freshness: fullnode timed out"))?
+    .map_err(|status| anyhow!("cannot check GraphQL freshness: fullnode unreachable ({})", status.message()))?
+    .into_inner();
+    if info.chain_id.as_deref() != Some(TESTNET_CHAIN_ID) {
+        return Err(anyhow!("cannot check GraphQL freshness: sui_rpc is not Sui testnet"));
+    }
+    let value = graphql(&cfg.graphql_url, "{ chainIdentifier checkpoint { sequenceNumber } }", json!({}))
+        .await
+        .map_err(|err| anyhow!("GraphQL unreachable ({err})"))?;
+    let chain = value["data"]["chainIdentifier"].as_str().unwrap_or("");
+    if chain != TESTNET_CHAIN_ID {
+        return Err(anyhow!("GraphQL is on chain {chain:?}, not Sui testnet"));
+    }
+    let indexed = as_u64(&value["data"]["checkpoint"]["sequenceNumber"]);
+    let lag = info.checkpoint_height.unwrap_or(0).saturating_sub(indexed);
+    if lag > cfg.graphql_max_lag {
+        return Err(anyhow!(
+            "GraphQL is {lag} checkpoints behind the fullnode (limit {}); refusing a stale read",
+            cfg.graphql_max_lag
+        ));
+    }
+    Ok(lag)
+}
+
+/// Decide whether a failed fullnode read may be retried on GraphQL. Chain-guard
+/// failures and not-found answers are final; so is read_source = grpc.
+async fn fallback_allowed(cfg: &Config, what: &str, fail: ReadFail) -> Result<()> {
+    let err = match fail {
+        ReadFail::NotFound(text) => return Err(anyhow!(text)),
+        ReadFail::Chain(err) => return Err(err),
+        ReadFail::Other(err) => err,
+    };
+    match cfg.read_source.as_str() {
+        "auto" => {}
+        "grpc" => return Err(anyhow!("{what}: fullnode read failed ({err})")),
+        other => return Err(anyhow!("read_source must be auto or grpc, not {other:?}")),
+    }
+    check_graphql_fresh(cfg)
+        .await
+        .map(|_| ())
+        .map_err(|stale| anyhow!("{what}: fullnode read failed ({err}) and {stale}"))
+}
+
+async fn read_object(cfg: &Config, object_id: &str) -> Result<ChainObject> {
+    match grpc_object(cfg, object_id).await {
+        Ok(object) => Ok(object),
+        Err(fail) => {
+            fallback_allowed(cfg, &format!("read {object_id}"), fail).await?;
+            let query = r#"
+                query($id: SuiAddress!) {
+                  object(address: $id) { address version asMoveObject { contents { type { repr } json } } }
+                }
+            "#;
+            let value = graphql(&cfg.graphql_url, query, json!({"id": object_id})).await?;
+            let object = &value["data"]["object"];
+            if object.is_null() {
+                return Err(anyhow!("Sui object {object_id} was not found"));
+            }
+            Ok(ChainObject {
+                version: as_u64(&object["version"]),
+                type_repr: object["asMoveObject"]["contents"]["type"]["repr"].as_str().unwrap_or("").to_string(),
+                json: object["asMoveObject"]["contents"]["json"].clone(),
+                source: "graphql",
+            })
+        }
+    }
+}
+
+async fn read_owned(cfg: &Config, owner: Address, type_name: &str) -> Result<Vec<ChainObject>> {
+    match grpc_owned(cfg, owner, type_name).await {
+        Ok(objects) => Ok(objects),
+        Err(fail) => {
+            fallback_allowed(cfg, &format!("list {type_name}"), fail).await?;
+            let query = r#"
+                query($owner: SuiAddress!, $type: String!) {
+                  objects(first: 50, filter: { owner: $owner, type: $type }) {
+                    nodes { version asMoveObject { contents { type { repr } json } } }
+                  }
+                }
+            "#;
+            let value = graphql(&cfg.graphql_url, query, json!({"owner": owner.to_string(), "type": type_name})).await?;
+            Ok(value["data"]["objects"]["nodes"]
+                .as_array()
+                .cloned()
+                .unwrap_or_default()
+                .iter()
+                .map(|node| ChainObject {
+                    version: as_u64(&node["version"]),
+                    type_repr: node["asMoveObject"]["contents"]["type"]["repr"].as_str().unwrap_or("").to_string(),
+                    json: node["asMoveObject"]["contents"]["json"].clone(),
+                    source: "graphql",
+                })
+                .collect())
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn addresses_normalize() {
+        assert_eq!(norm_address("0x2").unwrap(), format!("0x{:0>64}", "2"));
+        assert_eq!(norm_address("0xABC").unwrap(), norm_address("0x0abc").unwrap());
+        assert!(norm_address("0xzz").is_err());
+        assert!(norm_address("").is_err());
+    }
+
+    #[test]
+    fn proto_json_matches_graphql_shape() {
+        use prost_types::value::Kind;
+        use prost_types::{ListValue, Struct, Value as PValue};
+        let text = |s: &str| PValue { kind: Some(Kind::StringValue(s.into())) };
+        let mut fields = std::collections::BTreeMap::new();
+        fields.insert("version".to_string(), text("2"));
+        fields.insert("snapshots".to_string(), PValue { kind: Some(Kind::ListValue(ListValue { values: vec![text("AA==")] })) });
+        let value = PValue { kind: Some(Kind::StructValue(Struct { fields })) };
+        assert_eq!(proto_json(&value), json!({"version": "2", "snapshots": ["AA=="]}));
+    }
+
+    fn cfg(mode: &str) -> Config {
+        let mut cfg = parse_config("{}");
+        cfg.read_source = mode.into();
+        cfg.sui_rpc = "http://127.0.0.1:9".into();
+        cfg.graphql_url = "http://127.0.0.1:9/graphql".into();
+        cfg
+    }
+
+    #[test]
+    fn not_found_and_chain_failures_never_fall_back() {
+        let not_found = block_on(fallback_allowed(&cfg("auto"), "read", ReadFail::NotFound("gone".into())));
+        assert_eq!(not_found.unwrap_err().to_string(), "gone");
+        let chain = block_on(fallback_allowed(&cfg("auto"), "read", ReadFail::Chain(anyhow!("refusing to sign: mainnet"))));
+        assert!(chain.unwrap_err().to_string().contains("refusing to sign"));
+    }
+
+    #[test]
+    fn grpc_mode_never_falls_back() {
+        let err = block_on(fallback_allowed(&cfg("grpc"), "read", ReadFail::Other(anyhow!("down")))).unwrap_err();
+        assert!(err.to_string().contains("fullnode read failed (down)"));
+    }
+
+    #[test]
+    fn unverifiable_freshness_refuses() {
+        let err = block_on(fallback_allowed(&cfg("auto"), "read", ReadFail::Other(anyhow!("down")))).unwrap_err();
+        assert!(err.to_string().contains("cannot check GraphQL freshness"), "{err}");
+    }
+
+    #[test]
+    fn defaults() {
+        let cfg = parse_config("{}");
+        assert_eq!(cfg.read_source, "auto");
+        assert_eq!(cfg.graphql_max_lag, GRAPHQL_MAX_LAG);
+    }
 }

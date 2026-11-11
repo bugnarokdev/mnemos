@@ -11,7 +11,7 @@ from argon2.low_level import Type, hash_secret_raw
 from .py_engine import graphql, http_request
 
 
-def sui_balance(graphql_url: str, address: str) -> int:
+def graphql_balance(graphql_url: str, address: str) -> int:
     query = """
     query($a: SuiAddress!) {
       address(address: $a) { balance(coinType: "0x2::sui::SUI") { totalBalance } }
@@ -22,10 +22,13 @@ def sui_balance(graphql_url: str, address: str) -> int:
     return int(text)
 
 
-def fund_if_needed(faucet_url: str, graphql_url: str, address: str, minimum: int) -> dict:
+def fund_if_needed(config: dict, address: str, minimum: int) -> dict:
+    from .reads import balance as read_balance
+
+    faucet_url = config["faucet_url"]
     balance = 0
     try:
-        balance = sui_balance(graphql_url, address)
+        balance = read_balance(config, address)
     except Exception:
         balance = 0
     if minimum > 0 and balance >= minimum:
@@ -37,7 +40,10 @@ def fund_if_needed(faucet_url: str, graphql_url: str, address: str, minimum: int
         try:
             digest = request(faucet_url, address)
             time.sleep(2)
-            balance = sui_balance(graphql_url, address)
+            try:
+                balance = read_balance(config, address)
+            except Exception:
+                balance = 0
             return {"funded": True, "digest": digest, "balance": str(balance), "sui_address": address}
         except Exception as exc:
             last = str(exc)

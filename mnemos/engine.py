@@ -59,6 +59,19 @@ class _RustEngine:
             closer()
 
 
+MIN_CORE = (0, 2, 3)
+
+
+def _core_version(module) -> tuple[int, ...]:
+    getter = getattr(module, "core_version", None)
+    if getter is None:
+        return (0,)
+    try:
+        return tuple(int(part) for part in str(getter()).split(".")[:3])
+    except (TypeError, ValueError):
+        return (0,)
+
+
 def open_engine(db_path: str, secret: str, config: dict):
     import os
 
@@ -82,9 +95,9 @@ def open_engine(db_path: str, secret: str, config: dict):
                     module = None
             else:
                 reason = "native download is opt-in (set MNEMOS_NATIVE_AUTO=1)"
-    if module is not None and not hasattr(module, "public_identity"):
-        # Pre-0.2.2 cores derive keys with the old KDF; never mix them in.
-        reason = "the loaded mnemos_core predates the Argon2id key derivation; using the Python backend"
+    if module is not None and _core_version(module) < MIN_CORE:
+        # Older cores derive keys with the old KDF (< 0.2.2) or read only from GraphQL (< 0.2.3).
+        reason = "the loaded mnemos_core predates 0.2.3 (Argon2id keys, fullnode reads); using the Python backend"
         module = None
     if module is not None and forced != "python":
         inner = module.Engine(db_path, secret, json.dumps(config))
