@@ -126,6 +126,7 @@ English and French are kept in sync.
 | Sui and Walrus testnet | [deployment](docs/en/deployment.md) | [déploiement](docs/fr/deployment.md) |
 | Troubleshooting | [troubleshooting](docs/en/troubleshooting.md) | [dépannage](docs/fr/troubleshooting.md) |
 | Test report | [test report](docs/en/test-report.md) | [rapport de tests](docs/fr/test-report.md) |
+| Beta preview: shared spaces with Seal (testnet) | [preview](docs/en/preview-seal.md) | [preview](docs/fr/preview-seal.md) |
 
 ## Security at a glance
 

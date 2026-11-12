@@ -1,0 +1,13 @@
+[package]
+name = "mnemos_shared_space"
+edition = "2024"
+license = "MIT"
+
+[dependencies]
+# Revocable allowlist from sui-seal-client, pinned by commit. Its Published.toml
+# links this package to the testnet deployment
+# 0xe10fbae08333748f310adc926904980c6ced589a75a774bff4dfc462567d7f1b.
+seal_allowlist = { git = "https://github.com/bugnarokdev/sui-seal-client.git", subdir = "move/allowlist", rev = "f4ffa2f268fda2838633a08046ef4af8fc717e02" }
+
+[addresses]
+mnemos_share = "0x0"

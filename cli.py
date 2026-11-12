@@ -46,8 +46,10 @@ def mnemos_command(args) -> None:
         _init(getattr(args, "bytecode", "") or "")
     elif cmd == "history":
         _history(getattr(args, "object_id", "") or "", bool(getattr(args, "verify", False)), bool(getattr(args, "json", False)))
+    elif cmd == "share":
+        _share(args)
     else:
-        raise SystemExit("Usage: hermes mnemos-sui <status|doctor|restore|flush|init|history>")
+        raise SystemExit("Usage: hermes mnemos-sui <status|doctor|restore|flush|init|history|share>")
 
 
 def _status() -> None:
@@ -156,6 +158,19 @@ def _history(object_id: str, verify: bool, as_json: bool) -> None:
         raise SystemExit(1)
 
 
+def _share(args) -> None:
+    """Cooperative sharing lane (Beta preview, testnet). Native core with the seal feature only."""
+    from agent.secret_scope import get_secret
+
+    from .mnemos import share
+
+    if not getattr(args, "share_command", None):
+        raise SystemExit("Usage: hermes mnemos-sui share <create|join|add|remove|push|pull|status|whoami>")
+    code = share.run(args, _home(), get_secret("MNEMOS_SECRET") or "")
+    if code:
+        raise SystemExit(code)
+
+
 def register_cli(subparser) -> None:
     subs = subparser.add_subparsers(dest="mnemos_command")
     subs.add_parser("status", help="Show the local store and chain head")
@@ -170,4 +185,7 @@ def register_cli(subparser) -> None:
     hist.add_argument("--object-id", default="", help="Sui object id (defaults to config)")
     hist.add_argument("--verify", action="store_true", help="Fetch each blob, recompute hashes, check signatures")
     hist.add_argument("--json", action="store_true", help="Print JSON instead of one line per version")
+    from .mnemos.share import add_arguments as share_arguments
+
+    share_arguments(subs.add_parser("share", help="Beta preview: Seal-encrypted shared spaces on testnet"))
     subparser.set_defaults(func=mnemos_command)

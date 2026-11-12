@@ -24,19 +24,19 @@ const LEGACY_READ_ONLY: &str = "MemoryIndex uses the pre-0.2.2 key derivation an
 pub const TESTNET_CHAIN_ID: &str = "69WiPg3DAQiwdxfncX6wYQ2siKwAe6L9BZthQea3JNMD";
 
 #[derive(Clone)]
-struct Config {
-    sui_rpc: String,
-    graphql_url: String,
-    faucet_url: String,
-    walrus_publisher: String,
-    walrus_aggregator: String,
-    epochs: u64,
-    package_id: String,
-    index_object_id: String,
-    network: String,
-    sui_private_key: String,
-    read_source: String,
-    graphql_max_lag: u64,
+pub(crate) struct Config {
+    pub(crate) sui_rpc: String,
+    pub(crate) graphql_url: String,
+    pub(crate) faucet_url: String,
+    pub(crate) walrus_publisher: String,
+    pub(crate) walrus_aggregator: String,
+    pub(crate) epochs: u64,
+    pub(crate) package_id: String,
+    pub(crate) index_object_id: String,
+    pub(crate) network: String,
+    pub(crate) sui_private_key: String,
+    pub(crate) read_source: String,
+    pub(crate) graphql_max_lag: u64,
 }
 
 pub struct Engine {
@@ -339,6 +339,8 @@ impl Engine {
         }))
     }
 
+    // Pre-existing loop kept as is; the lint is style only (no behavior change).
+    #[allow(clippy::explicit_counter_loop)]
     pub fn restore(&mut self, object_id: &str) -> Result<Value> {
         let object_id = if object_id.is_empty() {
             self.cfg.index_object_id.clone()
@@ -677,7 +679,7 @@ impl Engine {
     }
 }
 
-fn parse_config(raw: &str) -> Config {
+pub(crate) fn parse_config(raw: &str) -> Config {
     let value: Value = serde_json::from_str(raw).unwrap_or(Value::Null);
     Config {
         sui_rpc: str_or(&value, "sui_rpc", "https://fullnode.testnet.sui.io:443"),
@@ -707,7 +709,7 @@ fn u64_of(value: &Value, key: &str, default: u64) -> u64 {
     }
 }
 
-fn load_sui_key(explicit: &str, seed: [u8; 32]) -> Result<Ed25519PrivateKey> {
+pub(crate) fn load_sui_key(explicit: &str, seed: [u8; 32]) -> Result<Ed25519PrivateKey> {
     let explicit = explicit.trim();
     if explicit.is_empty() {
         return Ok(Ed25519PrivateKey::new(seed));
@@ -757,7 +759,7 @@ fn decode_hex32(value: &str) -> Result<[u8; 32]> {
     bytes.try_into().map_err(|_| anyhow!("expected 32 bytes"))
 }
 
-fn block_on<F: std::future::Future>(future: F) -> F::Output {
+pub(crate) fn block_on<F: std::future::Future>(future: F) -> F::Output {
     tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .worker_threads(2)
@@ -814,7 +816,7 @@ async fn graphql(url: &str, query: &str, variables: Value) -> Result<Value> {
     Ok(response)
 }
 
-async fn walrus_put(publisher: &str, payload: &[u8], epochs: u64) -> Result<String> {
+pub(crate) async fn walrus_put(publisher: &str, payload: &[u8], epochs: u64) -> Result<String> {
     let client = http_client(Duration::from_secs(120));
     let url = format!("{}/v1/blobs?epochs={epochs}", publisher.trim_end_matches('/'));
     let mut last = String::from("no attempt");
@@ -840,7 +842,7 @@ async fn walrus_put(publisher: &str, payload: &[u8], epochs: u64) -> Result<Stri
     Err(anyhow!("Walrus PUT failed: {last}"))
 }
 
-async fn walrus_get(aggregator: &str, blob_id: &str) -> Result<Vec<u8>> {
+pub(crate) async fn walrus_get(aggregator: &str, blob_id: &str) -> Result<Vec<u8>> {
     let client = http_client(Duration::from_secs(60));
     let url = format!("{}/v1/blobs/{blob_id}", aggregator.trim_end_matches('/'));
     let mut last = String::from("no attempt");
@@ -923,11 +925,11 @@ fn fixed32(bytes: &[u8]) -> Result<[u8; 32]> {
     Ok(arr)
 }
 
-fn as_u64(value: &Value) -> u64 {
+pub(crate) fn as_u64(value: &Value) -> u64 {
     value.as_u64().or_else(|| value.as_i64().map(|item| item as u64)).or_else(|| value.as_str().and_then(|text| text.parse().ok())).unwrap_or(0)
 }
 
-fn as_bytes(value: &Value) -> Result<Vec<u8>> {
+pub(crate) fn as_bytes(value: &Value) -> Result<Vec<u8>> {
     match value {
         Value::String(text) => {
             let trimmed = text.trim();
@@ -1086,7 +1088,7 @@ async fn require_testnet(client: &mut sui_rpc::Client, rpc: &str) -> Result<()> 
 }
 
 /// `require_testnet` on a fresh client, for a check before any other work.
-async fn check_rpc(rpc: &str) -> Result<()> {
+pub(crate) async fn check_rpc(rpc: &str) -> Result<()> {
     let mut client = sui_rpc::Client::new(rpc).map_err(|err| anyhow!("sui rpc: {err}"))?;
     require_testnet(&mut client, rpc).await
 }
@@ -1096,7 +1098,7 @@ async fn execute_tx(rpc: &str, signer: &Ed25519PrivateKey, tx: TransactionBuilde
 }
 
 /// Sign and execute; return the digest and the (id, type) of every created object.
-async fn execute_tx_effects(rpc: &str, signer: &Ed25519PrivateKey, tx: TransactionBuilder) -> Result<(String, Vec<(String, String)>)> {
+pub(crate) async fn execute_tx_effects(rpc: &str, signer: &Ed25519PrivateKey, tx: TransactionBuilder) -> Result<(String, Vec<(String, String)>)> {
     let mut client = sui_rpc::Client::new(rpc).map_err(|err| anyhow!("sui rpc: {err}"))?;
     require_testnet(&mut client, rpc).await?;
     let built = tx.build(&mut client).await.map_err(|err| anyhow!("transaction build: {err}"))?;
@@ -1122,7 +1124,7 @@ async fn execute_tx_effects(rpc: &str, signer: &Ed25519PrivateKey, tx: Transacti
     Ok((digest, created))
 }
 
-fn one_created(digest: &str, created: &[(String, String)], matches: impl Fn(&str) -> bool) -> Result<Option<String>> {
+pub(crate) fn one_created(digest: &str, created: &[(String, String)], matches: impl Fn(&str) -> bool) -> Result<Option<String>> {
     let found: Vec<&String> = created.iter().filter(|(_, kind)| matches(kind)).map(|(id, _)| id).collect();
     match found.len() {
         0 => Ok(None),
@@ -1198,11 +1200,11 @@ async fn wait_for_package(cfg: &Config, owner: Address) -> Result<String> {
 const GRAPHQL_MAX_LAG: u64 = 100;
 const VERIFY_TTL: Duration = Duration::from_secs(300);
 
-struct ChainObject {
-    version: u64,
-    type_repr: String,
-    json: Value,
-    source: &'static str,
+pub(crate) struct ChainObject {
+    pub(crate) version: u64,
+    pub(crate) type_repr: String,
+    pub(crate) json: Value,
+    pub(crate) source: &'static str,
 }
 
 enum ReadFail {
@@ -1220,7 +1222,7 @@ impl From<ReadFail> for anyhow::Error {
     }
 }
 
-fn norm_address(text: &str) -> Result<String> {
+pub(crate) fn norm_address(text: &str) -> Result<String> {
     let raw = text.trim().trim_start_matches("0x").trim_start_matches("0X").to_lowercase();
     if raw.is_empty() || raw.len() > 64 || !raw.chars().all(|ch| ch.is_ascii_hexdigit()) {
         return Err(anyhow!("not a Sui address: {text:?}"));
@@ -1393,7 +1395,7 @@ async fn fallback_allowed(cfg: &Config, what: &str, fail: ReadFail) -> Result<()
         .map_err(|stale| anyhow!("{what}: fullnode read failed ({err}) and {stale}"))
 }
 
-async fn read_object(cfg: &Config, object_id: &str) -> Result<ChainObject> {
+pub(crate) async fn read_object(cfg: &Config, object_id: &str) -> Result<ChainObject> {
     match grpc_object(cfg, object_id).await {
         Ok(object) => Ok(object),
         Err(fail) => {

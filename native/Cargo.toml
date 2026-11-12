@@ -13,6 +13,9 @@ crate-type = ["cdylib", "rlib"]
 [features]
 default = []
 extension-module = ["pyo3/extension-module"]
+# Beta preview: cooperative sharing lane on Seal + Walrus testnet. Off by default; the
+# personal memory path does not depend on it.
+seal = ["dep:sui-seal-client"]
 
 [dependencies]
 anyhow = "1"
@@ -36,6 +39,8 @@ sui-transaction-builder = "0.4"
 prost-types = "0.14"
 tonic = { version = "0.14", default-features = false }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"] }
+# Seal client, pinned by commit (bugnarokdev/sui-seal-client main, v0.1 + owner republish).
+sui-seal-client = { git = "https://github.com/bugnarokdev/sui-seal-client", rev = "f4ffa2f268fda2838633a08046ef4af8fc717e02", optional = true }
 
 [profile.release]
 lto = false

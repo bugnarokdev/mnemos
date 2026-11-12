@@ -1,5 +1,6 @@
 #!/bin/sh
 # Build the native core from source and install it into the active interpreter.
+# MNEMOS_FEATURES=seal adds the cooperative sharing lane (Beta preview, testnet).
 set -eu
 ROOT=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
 PY=${MNEMOS_PYTHON:-python3}
@@ -10,7 +11,7 @@ if ! command -v "$MATURIN" >/dev/null 2>&1; then
   MATURIN="$PY -m maturin"
 fi
 OUT=$(mktemp -d)
-"$MATURIN" build --release --interpreter "$PY" -o "$OUT"
+"$MATURIN" build --release --interpreter "$PY" -o "$OUT" ${MNEMOS_FEATURES:+--features "$MNEMOS_FEATURES"}
 "$PY" - "$OUT" <<'PY'
 import site, sys, zipfile
 from pathlib import Path

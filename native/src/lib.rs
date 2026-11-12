@@ -1,5 +1,7 @@
 mod chain;
 mod engine;
+#[cfg(feature = "seal")]
+mod share;
 
 use pyo3::exceptions::PyRuntimeError;
 use pyo3::prelude::*;
@@ -109,6 +111,68 @@ impl Engine {
     fn close(&self) {}
 }
 
+/// Cooperative sharing lane (Beta preview). Every method returns JSON.
+#[cfg(feature = "seal")]
+#[pyclass]
+struct Share {
+    inner: share::Share,
+}
+
+#[cfg(feature = "seal")]
+#[pymethods]
+impl Share {
+    /// `signer_key`: suiprivkey, keystore base64 or 32-byte hex. Empty: the Sui key
+    /// derived from `mnemos_secret` (the profile's own Mnemos address).
+    #[new]
+    #[pyo3(signature = (config_json, signer_key, mnemos_secret = String::new()))]
+    fn new(config_json: String, signer_key: String, mnemos_secret: String) -> PyResult<Self> {
+        Ok(Self {
+            inner: share::Share::new(&config_json, &signer_key, &mnemos_secret).map_err(py_err)?,
+        })
+    }
+
+    fn address(&self) -> String {
+        self.inner.address()
+    }
+
+    fn create(&self, py: Python<'_>) -> PyResult<String> {
+        py.detach(|| Ok(self.inner.create().map_err(py_err)?.to_string()))
+    }
+
+    fn add(&self, py: Python<'_>, list_id: &str, cap_id: &str, member: &str) -> PyResult<String> {
+        let (list_id, cap_id, member) = (list_id.to_string(), cap_id.to_string(), member.to_string());
+        py.detach(move || Ok(self.inner.add(&list_id, &cap_id, &member).map_err(py_err)?.to_string()))
+    }
+
+    fn remove(&self, py: Python<'_>, list_id: &str, cap_id: &str, member: &str) -> PyResult<String> {
+        let (list_id, cap_id, member) = (list_id.to_string(), cap_id.to_string(), member.to_string());
+        py.detach(move || Ok(self.inner.remove(&list_id, &cap_id, &member).map_err(py_err)?.to_string()))
+    }
+
+    fn push(&self, py: Python<'_>, space_id: &str, entries_json: &str) -> PyResult<String> {
+        let (space_id, entries_json) = (space_id.to_string(), entries_json.to_string());
+        py.detach(move || Ok(self.inner.push(&space_id, &entries_json).map_err(py_err)?.to_string()))
+    }
+
+    /// `fetch=False` decrypts only with keys this object already holds (no key request).
+    #[pyo3(signature = (space_id, fetch = true))]
+    fn pull(&self, py: Python<'_>, space_id: &str, fetch: bool) -> PyResult<String> {
+        let space_id = space_id.to_string();
+        py.detach(move || Ok(self.inner.pull(&space_id, fetch).map_err(py_err)?.to_string()))
+    }
+
+    fn status(&self, py: Python<'_>, space_id: &str) -> PyResult<String> {
+        let space_id = space_id.to_string();
+        py.detach(move || Ok(self.inner.status(&space_id).map_err(py_err)?.to_string()))
+    }
+}
+
+/// True when this core was built with the `seal` feature (sharing lane).
+#[pyfunction]
+fn share_available() -> bool {
+    cfg!(feature = "seal")
+}
+
 #[pyfunction]
 fn content_hash_hex(prev_hex: &str, blob_sha_hex: &str, version: u64, session_id: &str, blob_id: &str) -> PyResult<String> {
     let prev = parse_hex32(prev_hex)?;
@@ -172,5 +236,8 @@ fn mnemos_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(open_blob_text, m)?)?;
     m.add_function(wrap_pyfunction!(public_identity, m)?)?;
     m.add_function(wrap_pyfunction!(core_version, m)?)?;
+    m.add_function(wrap_pyfunction!(share_available, m)?)?;
+    #[cfg(feature = "seal")]
+    m.add_class::<Share>()?;
     Ok(())
 }
