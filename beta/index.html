@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mnemos — Beta preview (testnet)</title>
+<meta name="description" content="BETA, testnet only: Mnemos coop mode. Several Hermes agents share one encrypted memory; Seal releases keys only to members of an onchain allowlist.">
+<meta name="theme-color" content="#050505">
+<meta name="robots" content="index, follow">
+<link rel="canonical" href="https://mnemos.rest/beta/">
+<link rel="icon" href="../favicon.svg" type="image/svg+xml">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://mnemos.rest/beta/">
+<meta property="og:title" content="Mnemos — Beta preview (testnet)">
+<meta property="og:description" content="Coop mode, BETA on testnet: shared encrypted memory for Hermes agents, keys released by Seal to allowlist members only.">
+<meta property="og:image" content="https://mnemos.rest/cover.jpg">
+<meta property="og:image:width" content="1280">
+<meta property="og:image:height" content="720">
+<meta property="og:image:alt" content="A marble statue with orange cracks, a chain of hexagonal hash blocks flowing into her mind, and the word MNEMOS.">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:site" content="@bugnarokdev">
+<meta name="twitter:title" content="Mnemos — Beta preview (testnet)">
+<meta name="twitter:description" content="Coop mode, BETA on testnet: shared encrypted memory for Hermes agents, keys by Seal.">
+<meta name="twitter:image" content="https://mnemos.rest/cover.jpg">
+<link rel="stylesheet" href="../style.css">
+</head>
+<body class="page-beta">
+<a class="skip" href="#main">Skip to content</a>
+
+<header>
+  <nav class="top" aria-label="Primary">
+    <a class="brand" href="../" aria-label="Mnemos home"><img src="../favicon.svg" alt="" width="22" height="22"> mnemos<span class="dim">.rest</span></a>
+    <ul>
+      <li><a href="../">Stable</a></li>
+      <li><a href="../#quickstart">Quickstart</a></li>
+      <li><a href="#roadmap">Roadmap</a></li>
+      <li><a href="https://github.com/bugnarokdev/mnemos/tree/preview/seal" target="_blank" rel="noopener noreferrer">GitHub</a></li>
+    </ul>
+  </nav>
+</header>
+
+<main id="main">
+
+<section class="beta" id="beta" aria-labelledby="bt">
+  <p class="back"><a href="../">&larr; Back to Mnemos, the stable release</a></p>
+  <h1 id="bt">Coop mode <span class="tag">BETA · testnet preview</span></h1>
+  <p class="sub">Several agents, one memory, no shared password. A shared space keeps encrypted entries on Walrus and their references in a Sui object; the <a href="https://github.com/MystenLabs/seal" target="_blank" rel="noopener noreferrer">Seal</a> key servers release decryption keys only to addresses on an on-chain allowlist. Your personal memory does not change: the coop lane is a separate path and never writes your MemoryIndex.</p>
+
+  <p class="warn"><strong>BETA.</strong> Not production software and not part of a release. It lives on the <a href="https://github.com/bugnarokdev/mnemos/tree/preview/seal" target="_blank" rel="noopener noreferrer"><code>preview/seal</code></a> branch, runs on Sui testnet, Walrus testnet and the Mysten Seal testnet key servers, and the formats may change. Testnet can be wiped. Share nothing you cannot afford to lose or to see leaked.</p>
+
+  <ol class="grid">
+    <li>
+      <h2>Allowlist on chain</h2>
+      <p>The creator publishes an allowlist and a Space bound to it in one transaction, then adds members by Sui address. The Space only accepts an entry from a current member, under the current epoch.</p>
+    </li>
+    <li>
+      <h2>Keys by policy</h2>
+      <p>Each entry is encrypted with Seal (threshold 2 of 2, <code>mysten-testnet-1</code> and <code>-2</code>). On pull, the key servers dry-run <code>seal_approve</code> and answer members only. Non-members get nothing.</p>
+    </li>
+    <li>
+      <h2>Rust, open source</h2>
+      <p>Built on <a href="https://github.com/bugnarokdev/sui-seal-client" target="_blank" rel="noopener noreferrer">sui-seal-client</a>, a Rust client for Seal. Native core only, behind the <code>seal</code> cargo feature; the Python backend refuses <code>share</code> with a clear message.</p>
+    </li>
+  </ol>
+
+  <div class="term" role="region" aria-label="Coop commands">
+    <div class="bar"><i></i><i></i><i></i><span>MNEMOS_FEATURES=seal scripts/build_core.sh</span></div>
+<pre><span class="p">$</span> hermes mnemos-sui share whoami                 <span class="c"># signer address</span>
+<span class="p">$</span> hermes mnemos-sui share create --name crew     <span class="c"># allowlist + Space, you hold the Cap</span>
+<span class="p">$</span> hermes mnemos-sui share add 0x&lt;teammate&gt;      <span class="c"># epoch unchanged</span>
+<span class="p">$</span> hermes mnemos-sui share push --text "..."      <span class="c"># encrypt, upload, publish</span>
+<span class="p">$</span> hermes mnemos-sui share join --space 0x&lt;id&gt;   <span class="c"># on the teammate's machine</span>
+<span class="p">$</span> hermes mnemos-sui share pull                   <span class="c"># fetch keys, decrypt, cache</span>
+<span class="p">$</span> hermes mnemos-sui share remove 0x&lt;teammate&gt;   <span class="c"># epoch + 1</span>
+<span class="p">$</span> hermes mnemos-sui share status                 <span class="c"># entries per epoch</span></pre>
+  </div>
+
+  <div class="cols">
+    <div>
+      <h2>Revocation, honestly</h2>
+      <p>Seal keys cannot be taken back. The epoch is part of every key id, and removing a member bumps it. After removal, that member cannot fetch any new key and cannot read anything pushed afterwards. What they already fetched, they keep: keys obtained before removal still decrypt the older entries. The coop test asserts exactly that. Removal protects the future, not the past.</p>
+    </div>
+    <div>
+      <h2>The client underneath</h2>
+      <p><a href="https://github.com/bugnarokdev/sui-seal-client/tree/v0.2.0" target="_blank" rel="noopener noreferrer">sui-seal-client v0.2.0</a>, also BETA: configurable servers and threshold, the Mysten 3-of-5 committee through its aggregator, allowlist, time-lock, owner-only and subscription policies, Python bindings, and 38/38 interop checks against <code>@mysten/seal</code>. The preview branch still pins the v0.1 commit; wiring v0.2 in is next.</p>
+    </div>
+  </div>
+
+  <dl class="facts">
+    <div><dt>Branch</dt><dd><a href="https://github.com/bugnarokdev/mnemos/tree/preview/seal" target="_blank" rel="noopener noreferrer"><code>preview/seal</code></a></dd></div>
+    <div><dt>Docs</dt><dd><a href="https://github.com/bugnarokdev/mnemos/blob/preview/seal/docs/en/preview-seal.md" target="_blank" rel="noopener noreferrer">English</a> · <a href="https://github.com/bugnarokdev/mnemos/blob/preview/seal/docs/fr/preview-seal.md" hreflang="fr" target="_blank" rel="noopener noreferrer">Français</a></dd></div>
+    <div><dt>Test report</dt><dd><a href="https://github.com/bugnarokdev/mnemos/blob/preview/seal/docs/en/test-report-preview-seal.md" target="_blank" rel="noopener noreferrer">Coop e2e: 34/34, two runs</a></dd></div>
+    <div><dt>Seal client</dt><dd><a href="https://github.com/bugnarokdev/sui-seal-client" target="_blank" rel="noopener noreferrer">bugnarokdev/sui-seal-client</a></dd></div>
+  </dl>
+
+  <h2 class="rm-h" id="roadmap">Roadmap <span class="dim">indicative · no dates · order may change</span></h2>
+  <ol class="roadmap">
+    <li class="done"><b>Coop beta.</b> Allowlist-based shared spaces on testnet. <span class="dim">This preview.</span></li>
+    <li class="done"><b>Client v0.2.</b> Configurable servers and threshold, committee key servers, more policies, Python bindings. <span class="dim">Released in sui-seal-client, BETA.</span></li>
+    <li><b>Wire v0.2 into Mnemos.</b> Committee and failover for shared spaces, time-limited and subscription spaces.</li>
+    <li><b>Python backend sharing</b> through the bindings, so <code>share</code> no longer needs the native core.</li>
+    <li><b>Coop mission board.</b> Missions in a shared Sui object, claimed on chain. A claim makes Seal open that task's memory to the claimer. Delivery is signed and validated by the maintainer; validation unlocks dependent missions, expired claims revert, and reputation is earned on chain, verifiable by anyone.</li>
+    <li><b>Security review</b> of the lane and the Move packages.</li>
+    <li><b>crates.io</b>, once Mysten publishes <code>seal-sdk</code> and <code>crypto</code>.</li>
+    <li><b>Mainnet</b>, only after the review.</li>
+  </ol>
+</section>
+
+<p class="built">Built on Sui · Walrus · Seal — for Hermes Agent by Nous Research</p>
+
+</main>
+
+<footer>
+  <p>Built by BugNaRok (<a href="https://x.com/bugnarokdev" target="_blank" rel="noopener noreferrer">@bugnarokdev</a>) · <a href="https://github.com/bugnarokdev/mnemos/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">MIT License</a> · <a href="https://github.com/bugnarokdev/mnemos/tree/preview/seal" target="_blank" rel="noopener noreferrer">Source</a></p>
+  <p class="dim">BETA preview. Sui testnet, Walrus testnet and the Mysten Seal testnet key servers only. Testnet SUI and WAL have no value. Not audited. No telemetry.</p>
+</footer>
+</body>
+</html>
