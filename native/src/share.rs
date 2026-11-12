@@ -1,4 +1,4 @@
-//! Cooperative sharing lane (Beta preview, testnet only, `seal` feature).
+//! BETA (testnet preview): cooperative sharing lane, testnet only, `seal` feature.
 //!
 //! A shared space is a `mnemos_share::space::Space` bound to a revocable
 //! `seal_allowlist::allowlist::Allowlist`. Entries are encrypted with Seal

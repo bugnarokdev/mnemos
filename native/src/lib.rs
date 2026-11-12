@@ -111,7 +111,7 @@ impl Engine {
     fn close(&self) {}
 }
 
-/// Cooperative sharing lane (Beta preview). Every method returns JSON.
+/// BETA (testnet preview): cooperative sharing lane. Every method returns JSON.
 #[cfg(feature = "seal")]
 #[pyclass]
 struct Share {

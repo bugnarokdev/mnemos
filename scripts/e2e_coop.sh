@@ -1,5 +1,5 @@
 #!/bin/sh
-# Beta preview: end-to-end check of the sharing lane on Sui testnet, Walrus testnet and
+# BETA (testnet preview): end-to-end check of the sharing lane on Sui testnet, Walrus testnet and
 # the Mysten Seal testnet key servers. Needs mnemos_core built with the seal feature:
 #   MNEMOS_FEATURES=seal scripts/build_core.sh
 #

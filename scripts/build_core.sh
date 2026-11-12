@@ -1,6 +1,6 @@
 #!/bin/sh
 # Build the native core from source and install it into the active interpreter.
-# MNEMOS_FEATURES=seal adds the cooperative sharing lane (Beta preview, testnet).
+# MNEMOS_FEATURES=seal adds the cooperative sharing lane (BETA, testnet preview).
 set -eu
 ROOT=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
 PY=${MNEMOS_PYTHON:-python3}

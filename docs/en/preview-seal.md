@@ -1,6 +1,6 @@
-# Shared spaces with Seal (Beta preview, testnet)
+# Shared spaces with Seal: BETA (testnet preview)
 
-> **Beta preview.** This lane lives on the `preview/seal` branch only. It runs on Sui
+> **BETA (testnet preview).** Not production software. This lane lives on the `preview/seal` branch only. It runs on Sui
 > testnet, Walrus testnet and the Mysten Seal testnet key servers. It is not part of a
 > release, the formats may change, and testnet can be wiped. Do not share anything you
 > cannot afford to lose or to see leaked.
@@ -114,6 +114,19 @@ path. Transactions that abort on chain are reported as errors.
   guarantee. Committee (aggregator) servers are not supported yet.
 - The `seal-sdk` and `crypto` crates are git dependencies pinned by commit, so this
   feature cannot be published to crates.io yet.
+
+## Roadmap (indicative)
+
+This roadmap is indicative only: no dates, no commitments, and the order may change.
+
+1. **v0.1 beta (this branch):** allowlist-based cooperative sharing on testnet.
+2. **Key servers:** committee (aggregator) key servers, and configurable servers and
+   threshold with failover.
+3. **More access policies:** subscription, time-limited access.
+4. **Python bindings** for sui-seal-client, so the Python backend can share too.
+5. **crates.io publication** once Mysten publishes `seal-sdk` and `crypto`.
+6. **Security review** of the lane and of the Move packages.
+7. **Then mainnet**, only after the review.
 
 ## Tests
 

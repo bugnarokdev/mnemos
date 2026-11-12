@@ -1,6 +1,7 @@
-"""End-to-end check of the sharing lane on Sui testnet, Walrus testnet and Seal.
+"""BETA (testnet preview): end-to-end check of the sharing lane on Sui testnet,
+Walrus testnet and Seal.
 
-Beta preview. Run through scripts/e2e_coop.sh. Every check is an assertion; the
+Not production software. Run through scripts/e2e_coop.sh. Every check is an assertion; the
 script exits non-zero on the first failure. Secrets are read from files and never
 printed.
 
@@ -90,7 +91,7 @@ def main() -> None:
     shutil.rmtree(WORK, ignore_errors=True)
     for who in ("a", "b", "c"):
         (home(who) / "mnemos").mkdir(parents=True)
-    print(f"run {RUN}, work {WORK}")
+    print(f"BETA (testnet preview) coop e2e, run {RUN}, work {WORK}")
     native_share()  # fails fast if the core lacks the seal feature
 
     # --- A's personal memory: fresh MemoryIndex, two facts, two snapshots ---------------

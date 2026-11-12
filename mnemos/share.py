@@ -1,4 +1,4 @@
-"""Cooperative sharing lane (Beta preview, Sui testnet and Walrus testnet only).
+"""BETA (testnet preview): cooperative sharing lane on Sui testnet and Walrus testnet only.
 
 A shared space is a Seal allowlist plus a ``mnemos_share::space::Space`` that lists
 Seal-encrypted Walrus blobs. The lane runs in the native core built with the ``seal``
@@ -210,29 +210,34 @@ def run(args, home: str, secret: str) -> int:
     return 0
 
 
+BETA = "BETA (testnet preview)"
+
+
 def add_arguments(parser) -> None:
-    subs = parser.add_subparsers(dest="share_command")
+    parser.description = f"{BETA}: Seal-encrypted shared spaces on Sui and Walrus testnet. Not for production data."
+    subs = parser.add_subparsers(dest="share_command", title=f"share commands, {BETA}")
     common = argparse.ArgumentParser(add_help=False)
     common.add_argument("--name", default="default", help="Local name of the shared space")
     common.add_argument("--key-file", default="", help="Signer key file (default: MNEMOS_SHARE_KEY_FILE, else the Mnemos key)")
-    subs.add_parser("whoami", parents=[common], help="Print the signer address")
-    subs.add_parser("create", parents=[common], help="Create an allowlist and a shared space (you are the first member)")
-    join = subs.add_parser("join", parents=[common], help="Register a space created by someone else")
+    subs.add_parser("whoami", parents=[common], help=f"{BETA}: Print the signer address")
+    subs.add_parser("create", parents=[common], help=f"{BETA}: Create an allowlist and a shared space (you are the first member)")
+    join = subs.add_parser("join", parents=[common], help=f"{BETA}: Register a space created by someone else")
     join.add_argument("--space", required=True, help="Space object id")
-    for verb in ("add", "remove"):
-        sub = subs.add_parser(verb, parents=[common], help=f"{verb.capitalize()} a member (remove bumps the epoch)")
+    verbs = {"add": "Add a member (epoch unchanged)", "remove": "Remove a member (bumps the epoch)"}
+    for verb, text in verbs.items():
+        sub = subs.add_parser(verb, parents=[common], help=f"{BETA}: {text}")
         sub.add_argument("member", help="Sui address")
-    push = subs.add_parser("push", parents=[common], help="Seal-encrypt entries, store them on Walrus, publish references")
+    push = subs.add_parser("push", parents=[common], help=f"{BETA}: Seal-encrypt entries, store them on Walrus, publish references")
     push.add_argument("--text", action="append", help="Entry text (repeatable)")
     push.add_argument("--kind", default="fact")
     push.add_argument("--from-memory", default="", help="Share the local memory entries matching this query")
     push.add_argument("--limit", default=5, type=int)
-    subs.add_parser("pull", parents=[common], help="Fetch keys and decrypt every entry you are allowed to read")
-    subs.add_parser("status", parents=[common], help="Epoch and entry counts of the space")
+    subs.add_parser("pull", parents=[common], help=f"{BETA}: Fetch keys and decrypt every entry you are allowed to read")
+    subs.add_parser("status", parents=[common], help=f"{BETA}: Epoch and entry counts of the space")
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="mnemos.share", description=__doc__.splitlines()[0])
+    parser = argparse.ArgumentParser(prog="mnemos.share")
     parser.add_argument("--home", default=os.environ.get("HERMES_HOME", ""), help="Hermes home (profile directory)")
     add_arguments(parser)
     args = parser.parse_args(argv)

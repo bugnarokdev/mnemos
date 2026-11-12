@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-/// Mnemos shared space (Beta preview, testnet only).
+/// Mnemos shared space. BETA (testnet preview), testnet only.
 ///
 /// A Space is a shared, append-only list of references to Seal-encrypted Walrus
 /// blobs. Access is governed by one `seal_allowlist::allowlist::Allowlist`:

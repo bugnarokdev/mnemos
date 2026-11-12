@@ -159,7 +159,7 @@ def _history(object_id: str, verify: bool, as_json: bool) -> None:
 
 
 def _share(args) -> None:
-    """Cooperative sharing lane (Beta preview, testnet). Native core with the seal feature only."""
+    """BETA (testnet preview): cooperative sharing lane. Native core with the seal feature only."""
     from agent.secret_scope import get_secret
 
     from .mnemos import share
@@ -187,5 +187,5 @@ def register_cli(subparser) -> None:
     hist.add_argument("--json", action="store_true", help="Print JSON instead of one line per version")
     from .mnemos.share import add_arguments as share_arguments
 
-    share_arguments(subs.add_parser("share", help="Beta preview: Seal-encrypted shared spaces on testnet"))
+    share_arguments(subs.add_parser("share", help="BETA (testnet preview): Seal-encrypted shared spaces on testnet"))
     subparser.set_defaults(func=mnemos_command)

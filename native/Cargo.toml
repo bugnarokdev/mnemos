@@ -13,7 +13,7 @@ crate-type = ["cdylib", "rlib"]
 [features]
 default = []
 extension-module = ["pyo3/extension-module"]
-# Beta preview: cooperative sharing lane on Seal + Walrus testnet. Off by default; the
+# BETA (testnet preview): cooperative sharing lane on Seal + Walrus testnet. Off by default; the
 # personal memory path does not depend on it.
 seal = ["dep:sui-seal-client"]
 

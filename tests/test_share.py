@@ -1,4 +1,4 @@
-"""Sharing lane (Beta preview): offline checks of the adapter and the native binding.
+"""Sharing lane, BETA (testnet preview): offline checks of the adapter and the native binding.
 
 The testnet scenario (members, refusal, revocation) is scripts/e2e_coop.sh.
 """
@@ -106,6 +106,8 @@ def test_merge_pull_keeps_what_was_read():
 def test_share_commands_parse():
     parser = argparse.ArgumentParser()
     share.add_arguments(parser)
+    assert "BETA (testnet preview)" in parser.description
+    assert parser.format_help().count("BETA (testnet preview)") >= 9
     args = parser.parse_args(["push", "--text", "one", "--text", "two", "--name", "team"])
     assert (args.share_command, args.text, args.name) == ("push", ["one", "two"], "team")
     args = parser.parse_args(["remove", "0xb"])

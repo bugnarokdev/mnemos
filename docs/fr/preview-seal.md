@@ -1,6 +1,6 @@
-# Espaces partagés avec Seal (Beta preview, testnet)
+# Espaces partagés avec Seal : BETA (testnet preview)
 
-> **Beta preview.** Cette voie n'existe que sur la branche `preview/seal`. Elle tourne
+> **BETA (testnet preview).** Ce n'est pas un logiciel de production. Cette voie n'existe que sur la branche `preview/seal`. Elle tourne
 > sur Sui testnet, Walrus testnet et les serveurs de clés Seal testnet de Mysten. Elle ne
 > fait partie d'aucune release, les formats peuvent changer et le testnet peut être
 > remis à zéro. Ne partagez rien que vous ne pouvez pas perdre ou voir fuiter.
@@ -118,6 +118,21 @@ chemin personnel. Une transaction qui échoue on-chain est remontée comme une e
   en charge.
 - Les crates `seal-sdk` et `crypto` sont des dépendances git figées par commit : cette
   feature ne peut pas encore être publiée sur crates.io.
+
+## Feuille de route (indicative)
+
+Cette feuille de route est seulement indicative : aucune date, aucun engagement, et
+l'ordre peut changer.
+
+1. **v0.1 beta (cette branche) :** partage coopératif par allowlist sur testnet.
+2. **Serveurs de clés :** serveurs en comité (agrégateur), choix des serveurs et du seuil,
+   avec bascule si l'un tombe.
+3. **D'autres règles d'accès :** abonnement, accès à durée limitée.
+4. **Bindings Python** pour sui-seal-client, pour que le backend Python puisse aussi
+   partager.
+5. **Publication sur crates.io** quand Mysten publiera `seal-sdk` et `crypto`.
+6. **Revue de sécurité** de la voie et des packages Move.
+7. **Puis mainnet**, seulement après la revue.
 
 ## Tests
 
