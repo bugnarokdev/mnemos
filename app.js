@@ -13,7 +13,7 @@
 
   function lines() {
     var l = [
-      '<span class="p">$</span> hermes mnemos history --verify',
+      '<span class="p">$</span> hermes mnemos-sui history --verify',
       "MemoryIndex " + IDX + "  pubkey a12af0e49b9c18ab",
       'v1    <b class="ok">OK</b>     ' + V1
     ];

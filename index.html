@@ -111,7 +111,7 @@
 
   <div class="term" role="region" aria-label="Terminal">
     <div class="bar"><i></i><i></i><i></i><span>bugnarokdev@machine-b ~</span></div>
-<pre id="out" aria-live="polite"><span class="p">$</span> hermes mnemos history --verify
+<pre id="out" aria-live="polite"><span class="p">$</span> hermes mnemos-sui history --verify
 MemoryIndex 0x772bef4afb843eec39dc880b3c0def75c7c363d3dc3942d8ac546931bf5d48bd  pubkey a12af0e49b9c18ab
 v1    <b class="ok">OK</b>     fdb11b68cb3386a4  blob k7xbplKaLg_6X9VHmiHx6IzMmY1HQ8q6IfxfytE3V-M
 v2    <b class="ok">OK</b>     577cd51205e7f5a1  blob IWdN2tdMe_iMto_WsNzvfu-s2ca3DIdgA38abPxpCXg
@@ -142,12 +142,12 @@ v3    <b class="ok">OK</b>     51f27807f88e3d0d  blob 46DO0SCDR0uAz0VWBzYihPr9Mg
       <h3>Create your MemoryIndex <span class="dim">on Sui testnet</span></h3>
 <pre><code>cd move/MemoryIndex
 sui move build --dump-bytecode-as-base64 &gt; /tmp/mnemos-bytecode.json
-hermes mnemos init --bytecode /tmp/mnemos-bytecode.json</code></pre>
+hermes mnemos-sui init --bytecode /tmp/mnemos-bytecode.json</code></pre>
     </li>
     <li>
       <h3>Restore on another machine</h3>
-<pre><code>hermes mnemos restore --object-id 0x&lt;your-memory-index&gt;
-hermes mnemos history --verify</code></pre>
+<pre><code>hermes mnemos-sui restore --object-id 0x&lt;your-memory-index&gt;
+hermes mnemos-sui history --verify</code></pre>
     </li>
   </ol>
   <p class="docs">Documentation: <a href="https://github.com/bugnarokdev/mnemos/tree/main/docs/en" target="_blank" rel="noopener noreferrer">English</a> · <a href="https://github.com/bugnarokdev/mnemos/tree/main/docs/fr" hreflang="fr" target="_blank" rel="noopener noreferrer">Français</a> · <a href="https://github.com/bugnarokdev/mnemos#network-disclosure" target="_blank" rel="noopener noreferrer">Network disclosure</a></p>
