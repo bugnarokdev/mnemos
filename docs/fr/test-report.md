@@ -88,4 +88,77 @@ Les wheels de [`mnemos-native-v0.2.3`](https://github.com/bugnarokdev/mnemos/rel
 
 ## Reproduire
 
-Lancez `pytest`, `cargo test --release` dans `native/`, puis `hermes mnemos init`, quelques `remember`, `hermes mnemos flush`, `hermes mnemos restore` sur un profil neuf et `hermes mnemos history --verify`. Pour la partie entre backends, refaites les mêmes étapes une fois avec `MNEMOS_BACKEND=python` et une fois avec le cœur Rust, avec le même secret.
+Lancez `pytest`, `cargo test --release` dans `native/`, puis `hermes mnemos-sui init`, quelques `remember`, `hermes mnemos-sui flush`, `hermes mnemos-sui restore` sur un profil neuf et `hermes mnemos-sui history --verify`. Pour la partie entre backends, refaites les mêmes étapes une fois avec `MNEMOS_BACKEND=python` et une fois avec le cœur Rust, avec le même secret.
+
+## Renommage pour le catalogue (`mnemos-sui`)
+
+Enregistrement après le changement de l'identifiant catalogue de `mnemos` en `mnemos-sui`, pour éviter la collision avec une autre entrée du même nom. La version `0.2.3`, les wheels natives, le dossier de données `$HERMES_HOME/mnemos/` et `provider.name()` (`mnemos`) restent inchangés. Ce qui change, c'est l'identifiant catalogue, le chemin d'installation (`$HERMES_HOME/plugins/mnemos-sui`), la valeur de `memory.provider` (`mnemos-sui`) et la commande CLI (`hermes mnemos-sui`).
+
+Le code source de l'extension native est inchangé, donc les wheels attestées v0.2.3 correspondent exactement à la source épinglée. Deux messages d'erreur natifs, rarement affichés, disent encore `hermes mnemos init` ; ils seront mis à jour avec la prochaine release native (v0.2.4).
+
+| | |
+| --- | --- |
+| Quand | 12 novembre 2026, 10:50 à 11:15, heure de Paris (UTC+1) |
+| Réseau | testnet Sui, testnet Walrus (comme ci-dessus) |
+| Chaîne d'outils | Linux x86_64, rustc 1.99.1, cargo 1.99.1, Python 3.12.14, pytest 9.2.0 |
+
+### Tests unitaires
+
+| Suite | Résultat |
+| --- | --- |
+| `cargo test --release` (cœur natif) | 8 réussites |
+| `pytest` avec le cœur Rust exigé (`MNEMOS_REQUIRE_RUST=1`) | 49 réussites |
+| `pytest` avec `MNEMOS_BACKEND=python` | 48 réussites, 1 ignoré (la comparaison de hash réservée au Rust) |
+
+### Installation et coexistence
+
+Dans un `HERMES_HOME` isolé, ce greffon a été installé dans `plugins/mnemos-sui`, à côté de l'autre entrée du catalogue dans `plugins/mnemos`.
+
+- `hermes plugins validate` a réussi sur les deux arbres.
+- `memory.provider: mnemos-sui` chargeait ce greffon ; `memory.provider: mnemos` chargeait l'autre.
+- `hermes mnemos-sui --help` et `hermes mnemos-sui status` ont fonctionné (status a indiqué que le secret n'était pas défini, comme prévu). `hermes mnemos` n'était pas enregistré tant que ce greffon était actif.
+
+### De bout en bout sur le testnet
+
+Le même script que ci-dessus, sur un MemoryIndex neuf par backend, pour que toutes les assertions passent sans modification (deux faits, effacement, restauration, `history --verify`, puis chaque backend prolonge l'index de l'autre). Package : [`0xc1222936…1f4a`](https://testnet.suivision.xyz/package/0xc1222936acba3d4b12e87341b43c689d932c04a026805ed1b3758f32a37f1f4a).
+
+#### Cœur Rust
+
+MemoryIndex [`0x0a844d3a…26da`](https://testnet.suivision.xyz/object/0x0a844d3acf44c788b878a64a788179dcd677929816177bd3d83784711c9726da), créé dans [`5GZ3KFKsTt…`](https://testnet.suivision.xyz/txblock/5GZ3KFKsTtPuqhBdSWvGGZdnWdBvY56LzU5GVxgXtHRs).
+
+| Version | Hash de contenu | Blob Walrus | Transaction Sui |
+| --- | --- | --- | --- |
+| 1 | `c15823c3f75dccb3` | [`Jw_lT0cIYc…`](https://aggregator.walrus-testnet.walrus.space/v1/blobs/Jw_lT0cIYcYY_eGavqs_dL4jIK8fUK3-1d-j0aDwKW4) | [`AfDDTV9BYg…`](https://testnet.suivision.xyz/txblock/AfDDTV9BYg4dXV3SBTHz13pNutiXKpWsTuyQb2BbzwRV) |
+| 2 | `65572e7c9669b1e4` | [`sMFTuS-fr8…`](https://aggregator.walrus-testnet.walrus.space/v1/blobs/sMFTuS-fr8IV28QFP5NOtxyq2NJFIHXLnr374Lo8Lms) | [`CeR1v25FEX…`](https://testnet.suivision.xyz/txblock/CeR1v25FEX44kM8zhDL4zx5oYVsAFtNouWAT7EcZs96J) |
+
+Résultat : dépôt local effacé ; restore a renvoyé 2 entrées, 2 instantanés, `kdf: argon2id` ; `history --verify` : `OK: 2 versions verified`. L'index a été lu via le nœud complet.
+
+#### Backend Python
+
+MemoryIndex [`0x3d9a398d…f8e3`](https://testnet.suivision.xyz/object/0x3d9a398d710b53fdb2b5c02be50d00eb6547ddeeaaf9251dd67f6aa702e4f8e3), créé dans [`6qccZU3id4…`](https://testnet.suivision.xyz/txblock/6qccZU3id4W692jg7ZMnHdMnkPKd9rrubKW4F4MNBa61).
+
+| Version | Hash de contenu | Blob Walrus | Transaction Sui |
+| --- | --- | --- | --- |
+| 1 | `4b902e15b0e77c1a` | [`XsPJJ9eM4b…`](https://aggregator.walrus-testnet.walrus.space/v1/blobs/XsPJJ9eM4bZdgKD4QSyAKxLTkEDsIB28lK-nonNnjFQ) | [`DX5gEG2igL…`](https://testnet.suivision.xyz/txblock/DX5gEG2igLqN3SHcGyLqXt4mjqUoR41hhrqKu3QZQ8H9) |
+| 2 | `c49137bc2929509d` | [`6Otf-WaYhj…`](https://aggregator.walrus-testnet.walrus.space/v1/blobs/6Otf-WaYhjyYIHiBzdUUvx4xobLMnQ9j4lz10I-3tC8) | [`A1iJJbBXDY…`](https://testnet.suivision.xyz/txblock/A1iJJbBXDYCBc7YY6YCVqJSoYc1NfgN9p2o4kxBG3mkb) |
+
+Résultat : dépôt local effacé ; restore a renvoyé 2 entrées, 2 instantanés, `kdf: argon2id` ; `history --verify` : `OK: 2 versions verified`, lu via le nœud complet.
+
+#### Entre backends
+
+Chaque backend restaure puis prolonge l'index de l'autre, et l'autre vérifie le résultat.
+
+- Rust restaure l'index Python [`0x3d9a398d…f8e3`](https://testnet.suivision.xyz/object/0x3d9a398d710b53fdb2b5c02be50d00eb6547ddeeaaf9251dd67f6aa702e4f8e3) (2 entrées) et ajoute la version 3 : [`utsan8-bgH…`](https://aggregator.walrus-testnet.walrus.space/v1/blobs/utsan8-bgHJxxYeMYBVSgolQkmrMIWlWfGVy_dcZhww), [`3PPioHmvnU…`](https://testnet.suivision.xyz/txblock/3PPioHmvnUueDwTuvRgrywjLntBH28wDouVnmtJLCvFp).
+- Python restaure l'index Rust [`0x0a844d3a…26da`](https://testnet.suivision.xyz/object/0x0a844d3acf44c788b878a64a788179dcd677929816177bd3d83784711c9726da) (2 entrées) et ajoute la version 3 : [`NWi3OmFG13…`](https://aggregator.walrus-testnet.walrus.space/v1/blobs/NWi3OmFG13dt2gYmKtrF3iVIUSZySOVRADXkBv2Ow-c), [`634bmLUCkq…`](https://testnet.suivision.xyz/txblock/634bmLUCkqYXhpbiEAf6KZEwzzNfqCT3LYTBcaBptFvY).
+
+Après chaque écriture croisée, le premier backend restaure 3 entrées et `history --verify` indique `OK: 3 versions verified`.
+
+#### Garde de chaîne
+
+Chaque backend a été pointé vers un `sui_rpc` hors testnet ou injoignable, puis sollicité pour `init` et `flush`. Chaque tentative a été refusée avant tout envoi ou signature.
+
+| `sui_rpc` | Backend | `init` et `flush` |
+| --- | --- | --- |
+| mainnet `https://fullnode.mainnet.sui.io:443` | Python, Rust | `refusing to sign: ... is on chain mainnet (4btiuiMPvEENsttpZC7CZ53DruC3MAgfznDbASZ7DR6S), Mnemos only writes to Sui testnet` |
+| devnet `https://fullnode.devnet.sui.io:443` | Python, Rust | `refusing to sign: ... is on chain unknown (9ovasb4imJNPrhAjLcXjanDMwcybDczZR8W5jnWxpVhK), Mnemos only writes to Sui testnet` |
+| unreachable `https://127.0.0.1:9` | Python, Rust | `refusing to sign: could not read the chain id of https://127.0.0.1:9` (Python : `_InactiveRpcError`, Rust : `tcp connect error`) |

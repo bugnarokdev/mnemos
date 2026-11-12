@@ -88,4 +88,77 @@ The wheels of [`mnemos-native-v0.2.3`](https://github.com/bugnarokdev/mnemos/rel
 
 ## Reproduce
 
-Run `pytest`, `cargo test --release` in `native/`, then `hermes mnemos init`, a few `remember` calls, `hermes mnemos flush`, `hermes mnemos restore` on a fresh profile and `hermes mnemos history --verify`. For the cross-backend part, run the same steps once with `MNEMOS_BACKEND=python` and once with the Rust core on the same secret.
+Run `pytest`, `cargo test --release` in `native/`, then `hermes mnemos-sui init`, a few `remember` calls, `hermes mnemos-sui flush`, `hermes mnemos-sui restore` on a fresh profile and `hermes mnemos-sui history --verify`. For the cross-backend part, run the same steps once with `MNEMOS_BACKEND=python` and once with the Rust core on the same secret.
+
+## Catalog rename (`mnemos-sui`)
+
+Recorded after the catalog id was renamed from `mnemos` to `mnemos-sui`, so it does not collide with another catalog entry of that name. Version `0.2.3`, the native wheels, the data directory `$HERMES_HOME/mnemos/`, and `provider.name()` (`mnemos`) are unchanged. What changed is the catalog id, the install path (`$HERMES_HOME/plugins/mnemos-sui`), the `memory.provider` value (`mnemos-sui`), and the CLI command (`hermes mnemos-sui`).
+
+The native extension source is unchanged, so the attested v0.2.3 wheels match the pinned source exactly. Two rare native error messages still say `hermes mnemos init` and will be updated with the next native release (v0.2.4).
+
+| | |
+| --- | --- |
+| When | 12 November 2026, 10:50 to 11:15 Paris time (UTC+1) |
+| Network | Sui testnet, Walrus testnet (same as above) |
+| Toolchain | Linux x86_64, rustc 1.99.1, cargo 1.99.1, Python 3.12.14, pytest 9.2.0 |
+
+### Unit tests
+
+| Suite | Result |
+| --- | --- |
+| `cargo test --release` (native core) | 8 passed |
+| `pytest` with the Rust core required (`MNEMOS_REQUIRE_RUST=1`) | 49 passed |
+| `pytest` with `MNEMOS_BACKEND=python` | 48 passed, 1 skipped (the Rust-only hash comparison) |
+
+### Install and coexistence
+
+In an isolated `HERMES_HOME`, this plugin was installed at `plugins/mnemos-sui` next to the other catalog entry at `plugins/mnemos`.
+
+- `hermes plugins validate` passed on both trees.
+- `memory.provider: mnemos-sui` loaded this plugin; `memory.provider: mnemos` loaded the other.
+- `hermes mnemos-sui --help` and `hermes mnemos-sui status` ran (status reported that the secret was unset, as expected). `hermes mnemos` was not registered while this plugin was active.
+
+### End-to-end on testnet
+
+Same script as above, on a fresh MemoryIndex per backend so every assertion passed unmodified (two facts, wipe, restore, `history --verify`, then each backend extends the other's index). Package: [`0xc1222936…1f4a`](https://testnet.suivision.xyz/package/0xc1222936acba3d4b12e87341b43c689d932c04a026805ed1b3758f32a37f1f4a).
+
+#### Rust core
+
+MemoryIndex [`0x0a844d3a…26da`](https://testnet.suivision.xyz/object/0x0a844d3acf44c788b878a64a788179dcd677929816177bd3d83784711c9726da), created in [`5GZ3KFKsTt…`](https://testnet.suivision.xyz/txblock/5GZ3KFKsTtPuqhBdSWvGGZdnWdBvY56LzU5GVxgXtHRs).
+
+| Version | Content hash | Walrus blob | Sui transaction |
+| --- | --- | --- | --- |
+| 1 | `c15823c3f75dccb3` | [`Jw_lT0cIYc…`](https://aggregator.walrus-testnet.walrus.space/v1/blobs/Jw_lT0cIYcYY_eGavqs_dL4jIK8fUK3-1d-j0aDwKW4) | [`AfDDTV9BYg…`](https://testnet.suivision.xyz/txblock/AfDDTV9BYg4dXV3SBTHz13pNutiXKpWsTuyQb2BbzwRV) |
+| 2 | `65572e7c9669b1e4` | [`sMFTuS-fr8…`](https://aggregator.walrus-testnet.walrus.space/v1/blobs/sMFTuS-fr8IV28QFP5NOtxyq2NJFIHXLnr374Lo8Lms) | [`CeR1v25FEX…`](https://testnet.suivision.xyz/txblock/CeR1v25FEX44kM8zhDL4zx5oYVsAFtNouWAT7EcZs96J) |
+
+Result: local store wiped; restore returned 2 entries, 2 snapshots, `kdf: argon2id`; `history --verify`: `OK: 2 versions verified`. The index was read via the fullnode.
+
+#### Python backend
+
+MemoryIndex [`0x3d9a398d…f8e3`](https://testnet.suivision.xyz/object/0x3d9a398d710b53fdb2b5c02be50d00eb6547ddeeaaf9251dd67f6aa702e4f8e3), created in [`6qccZU3id4…`](https://testnet.suivision.xyz/txblock/6qccZU3id4W692jg7ZMnHdMnkPKd9rrubKW4F4MNBa61).
+
+| Version | Content hash | Walrus blob | Sui transaction |
+| --- | --- | --- | --- |
+| 1 | `4b902e15b0e77c1a` | [`XsPJJ9eM4b…`](https://aggregator.walrus-testnet.walrus.space/v1/blobs/XsPJJ9eM4bZdgKD4QSyAKxLTkEDsIB28lK-nonNnjFQ) | [`DX5gEG2igL…`](https://testnet.suivision.xyz/txblock/DX5gEG2igLqN3SHcGyLqXt4mjqUoR41hhrqKu3QZQ8H9) |
+| 2 | `c49137bc2929509d` | [`6Otf-WaYhj…`](https://aggregator.walrus-testnet.walrus.space/v1/blobs/6Otf-WaYhjyYIHiBzdUUvx4xobLMnQ9j4lz10I-3tC8) | [`A1iJJbBXDY…`](https://testnet.suivision.xyz/txblock/A1iJJbBXDYCBc7YY6YCVqJSoYc1NfgN9p2o4kxBG3mkb) |
+
+Result: local store wiped; restore returned 2 entries, 2 snapshots, `kdf: argon2id`; `history --verify`: `OK: 2 versions verified`, read via the fullnode.
+
+#### Cross-backend
+
+Each backend restores and then extends the other backend's index, and the other backend verifies the result.
+
+- Rust restores the Python index [`0x3d9a398d…f8e3`](https://testnet.suivision.xyz/object/0x3d9a398d710b53fdb2b5c02be50d00eb6547ddeeaaf9251dd67f6aa702e4f8e3) (2 entries) and appends version 3: [`utsan8-bgH…`](https://aggregator.walrus-testnet.walrus.space/v1/blobs/utsan8-bgHJxxYeMYBVSgolQkmrMIWlWfGVy_dcZhww), [`3PPioHmvnU…`](https://testnet.suivision.xyz/txblock/3PPioHmvnUueDwTuvRgrywjLntBH28wDouVnmtJLCvFp).
+- Python restores the Rust index [`0x0a844d3a…26da`](https://testnet.suivision.xyz/object/0x0a844d3acf44c788b878a64a788179dcd677929816177bd3d83784711c9726da) (2 entries) and appends version 3: [`NWi3OmFG13…`](https://aggregator.walrus-testnet.walrus.space/v1/blobs/NWi3OmFG13dt2gYmKtrF3iVIUSZySOVRADXkBv2Ow-c), [`634bmLUCkq…`](https://testnet.suivision.xyz/txblock/634bmLUCkqYXhpbiEAf6KZEwzzNfqCT3LYTBcaBptFvY).
+
+After each cross write, the first backend restores 3 entries and `history --verify` reports `OK: 3 versions verified`.
+
+#### Chain guard
+
+Each backend was pointed at a non-testnet or unreachable `sui_rpc` and asked to `init` and to `flush`. Every attempt was refused before anything was uploaded or signed.
+
+| `sui_rpc` | Backend | `init` and `flush` |
+| --- | --- | --- |
+| mainnet `https://fullnode.mainnet.sui.io:443` | Python, Rust | `refusing to sign: ... is on chain mainnet (4btiuiMPvEENsttpZC7CZ53DruC3MAgfznDbASZ7DR6S), Mnemos only writes to Sui testnet` |
+| devnet `https://fullnode.devnet.sui.io:443` | Python, Rust | `refusing to sign: ... is on chain unknown (9ovasb4imJNPrhAjLcXjanDMwcybDczZR8W5jnWxpVhK), Mnemos only writes to Sui testnet` |
+| unreachable `https://127.0.0.1:9` | Python, Rust | `refusing to sign: could not read the chain id of https://127.0.0.1:9` (Python: `_InactiveRpcError`, Rust: `tcp connect error`) |

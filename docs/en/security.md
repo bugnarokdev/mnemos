@@ -30,7 +30,7 @@ The snapshot public key is stored in the `MemoryIndex` at creation. Later append
 
 ### Memories created before 0.2.2
 
-Before 0.2.2 the three keys came from a single HKDF over the passphrase (salts `mnemos-aead-v1`, `mnemos-sign-v1`, `mnemos-sui-v1`). That is fast to brute-force offline, because the public key and the ciphertext are public. Mnemos still reads those indexes: `restore` sees that the on-chain public key matches the old derivation and decrypts with the old key, and `history --verify` needs no secret at all. Such an index is read-only: no new snapshot is signed with the old keys. To keep writing, run `hermes mnemos init` to create a new MemoryIndex, which gets the Argon2id key. New facts go to the new index; the old one stays readable and verifiable for the earlier history. There is no setting to choose the old derivation.
+Before 0.2.2 the three keys came from a single HKDF over the passphrase (salts `mnemos-aead-v1`, `mnemos-sign-v1`, `mnemos-sui-v1`). That is fast to brute-force offline, because the public key and the ciphertext are public. Mnemos still reads those indexes: `restore` sees that the on-chain public key matches the old derivation and decrypts with the old key, and `history --verify` needs no secret at all. Such an index is read-only: no new snapshot is signed with the old keys. To keep writing, run `hermes mnemos-sui init` to create a new MemoryIndex, which gets the Argon2id key. New facts go to the new index; the old one stays readable and verifiable for the earlier history. There is no setting to choose the old derivation.
 
 ## Chain guard
 

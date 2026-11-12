@@ -1,4 +1,4 @@
-"""``hermes mnemos`` commands. Active only when memory.provider is mnemos."""
+"""``hermes mnemos-sui`` commands. Active only when memory.provider is mnemos-sui."""
 
 from __future__ import annotations
 
@@ -47,7 +47,7 @@ def mnemos_command(args) -> None:
     elif cmd == "history":
         _history(getattr(args, "object_id", "") or "", bool(getattr(args, "verify", False)), bool(getattr(args, "json", False)))
     else:
-        raise SystemExit("Usage: hermes mnemos <status|doctor|restore|flush|init|history>")
+        raise SystemExit("Usage: hermes mnemos-sui <status|doctor|restore|flush|init|history>")
 
 
 def _status() -> None:
@@ -101,7 +101,7 @@ def _init(bytecode_path: str) -> None:
     from .mnemos.py_engine import save_file_config
 
     if not bytecode_path:
-        raise SystemExit("hermes mnemos init --bytecode <sui-move-build.json>")
+        raise SystemExit("hermes mnemos-sui init --bytecode <sui-move-build.json>")
     raw = Path(bytecode_path).read_text(encoding="utf-8")
     engine, home, _config = _engine()
     try:
@@ -128,7 +128,7 @@ def _history(object_id: str, verify: bool, as_json: bool) -> None:
     config = load_file_config(_home())
     object_id = (object_id or config.get("index_object_id") or "").strip()
     if not object_id:
-        raise SystemExit("No MemoryIndex: pass --object-id or run `hermes mnemos init`.")
+        raise SystemExit("No MemoryIndex: pass --object-id or run `hermes mnemos-sui init`.")
     try:
         _obj, contents = memory_index(config, object_id)
     except Exception as exc:

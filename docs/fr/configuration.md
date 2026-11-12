@@ -28,7 +28,7 @@ Les valeurs par défaut sont les points de terminaison publics du testnet.
 | `walrus_publisher` | `https://publisher.walrus-testnet.walrus.space` |
 | `walrus_aggregator` | `https://aggregator.walrus-testnet.walrus.space` |
 | `epochs` | `5` |
-| `package_id` | vide jusqu'à `hermes mnemos init` ; après une restauration il est lu depuis le type du MemoryIndex sur Sui |
+| `package_id` | vide jusqu'à `hermes mnemos-sui init` ; après une restauration il est lu depuis le type du MemoryIndex sur Sui |
 | `index_object_id` | vide jusqu'à init, ou un objet existant pour la restauration |
 
 `sui_rpc` est le nœud complet gRPC. Le JSON-RPC des nœuds publics est retiré. Un déploiement mainnet ultérieur peut pointer `sui_rpc` vers un autre point gRPC, y compris une URL dRPC, sans changer le code. C'est aussi la source de lecture principale ; voir [lectures et disponibilité](architecture.md#lectures-et-disponibilité).
@@ -42,11 +42,11 @@ Le panneau du tableau de bord est `config_schema.py`. Il déclare `CONFIG_SCHEMA
 | Commande | Rôle |
 | --- | --- |
 | `hermes memory status` | État intégré. Affiche la section Mnemos via `get_status_config`. |
-| `hermes mnemos status` | Nombre d'entrées, tête de chaîne, backend (`rust` ou `python`). |
-| `hermes mnemos doctor` | Secret, dépôt, Walrus, GraphQL et objet index. Code de sortie 1 si le dépôt local est inutilisable. |
-| `hermes mnemos init --bytecode FICHIER` | Faucet, publication, création de l'objet possédé. |
-| `hermes mnemos flush` | Valide la file d'attente. |
-| `hermes mnemos restore --object-id 0x...` | Reconstruit le cache local. |
-| `hermes mnemos history [--verify] [--object-id 0x...] [--json]` | Liste les instantanés ; `--verify` vérifie hashs, liens et signatures contre Walrus, sans le secret. Code de sortie 1 au moindre échec. |
+| `hermes mnemos-sui status` | Nombre d'entrées, tête de chaîne, backend (`rust` ou `python`). |
+| `hermes mnemos-sui doctor` | Secret, dépôt, Walrus, GraphQL et objet index. Code de sortie 1 si le dépôt local est inutilisable. |
+| `hermes mnemos-sui init --bytecode FICHIER` | Faucet, publication, création de l'objet possédé. |
+| `hermes mnemos-sui flush` | Valide la file d'attente. |
+| `hermes mnemos-sui restore --object-id 0x...` | Reconstruit le cache local. |
+| `hermes mnemos-sui history [--verify] [--object-id 0x...] [--json]` | Liste les instantanés ; `--verify` vérifie hashs, liens et signatures contre Walrus, sans le secret. Code de sortie 1 au moindre échec. |
 
-Les commandes `hermes mnemos` n'apparaissent que lorsque `memory.provider` vaut `mnemos`.
+Les commandes `hermes mnemos-sui` n'apparaissent que lorsque `memory.provider` vaut `mnemos-sui`.

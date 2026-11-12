@@ -12,14 +12,14 @@ Requirements:
 The repository root is the plugin.
 
 ```bash
-ln -sfn /path/to/mnemos "$HERMES_HOME/plugins/mnemos"
+ln -sfn /path/to/mnemos "$HERMES_HOME/plugins/mnemos-sui"
 ```
 
 `$HERMES_HOME/config.yaml`:
 
 ```yaml
 memory:
-  provider: mnemos
+  provider: mnemos-sui
 ```
 
 `$HERMES_HOME/.env`:
@@ -41,7 +41,7 @@ hermes memory status
 
 ## Native core
 
-By default Mnemos uses the Python backend and downloads nothing. The native download is opt-in: with `MNEMOS_NATIVE_AUTO=1` and no importable `mnemos_core`, the first open downloads the matching wheel from the official `mnemos-native-v0.2.3` release at `https://github.com/bugnarokdev/mnemos`, compares it with the sha256 pinned in `mnemos/native_wheel.py`, extracts it under `$HERMES_HOME/mnemos/native/mnemos-native-v0.2.3/`, appends that directory to `sys.path`, and loads it. A `mnemos_core` older than 0.2.3 is ignored. The URL is fixed and no checksum file is read from the network. A missing release, a checksum mismatch, or `MNEMOS_BACKEND=python` keeps the Python backend. `hermes mnemos doctor` reports which backend is active and why.
+By default Mnemos uses the Python backend and downloads nothing. The native download is opt-in: with `MNEMOS_NATIVE_AUTO=1` and no importable `mnemos_core`, the first open downloads the matching wheel from the official `mnemos-native-v0.2.3` release at `https://github.com/bugnarokdev/mnemos`, compares it with the sha256 pinned in `mnemos/native_wheel.py`, extracts it under `$HERMES_HOME/mnemos/native/mnemos-native-v0.2.3/`, appends that directory to `sys.path`, and loads it. A `mnemos_core` older than 0.2.3 is ignored. The URL is fixed and no checksum file is read from the network. A missing release, a checksum mismatch, or `MNEMOS_BACKEND=python` keeps the Python backend. `hermes mnemos-sui doctor` reports which backend is active and why.
 
 GitHub Actions (`.github/workflows/native-wheels.yml`) builds the wheels and attests them with `actions/attest-build-provenance`. Nothing binary is committed.
 
@@ -62,7 +62,7 @@ A catalog install does not compile Rust. The Python backend performs the same sn
 ```bash
 cd move/MemoryIndex
 sui move build --dump-bytecode-as-base64 > /tmp/mnemos-bytecode.json
-hermes mnemos init --bytecode /tmp/mnemos-bytecode.json
+hermes mnemos-sui init --bytecode /tmp/mnemos-bytecode.json
 ```
 
 `init` derives a Sui key from `MNEMOS_SECRET` unless `MNEMOS_SUI_PRIVATE_KEY` is set, asks the testnet faucet for gas, publishes `MemoryIndex`, and creates the owned object. It writes `package_id` and `index_object_id` to `$HERMES_HOME/mnemos/config.json`.

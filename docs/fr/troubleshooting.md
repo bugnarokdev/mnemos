@@ -14,7 +14,7 @@ L'erreur contient l'adresse Sui. Approvisionnez-la depuis <https://faucet.sui.io
 
 ## `MoveAbort` code 7 sur `append`
 
-Le code 7 est `E_VERSION` : le client a construit un instantané contre une tête périmée. La synchronisation relit GraphQL jusqu'à atteindre au moins la version enregistrée localement. Si l'erreur reste, attendez quelques secondes et relancez `hermes mnemos flush`. L'entrée reste locale tant qu'un ajout n'a pas réussi.
+Le code 7 est `E_VERSION` : le client a construit un instantané contre une tête périmée. La synchronisation relit GraphQL jusqu'à atteindre au moins la version enregistrée localement. Si l'erreur reste, attendez quelques secondes et relancez `hermes mnemos-sui flush`. L'entrée reste locale tant qu'un ajout n'a pas réussi.
 
 ## `MoveAbort` code 6
 
@@ -22,7 +22,7 @@ L'index a déjà 32 instantanés. Cette version ne fait pas tourner l'objet. La 
 
 ## Prefetch vide
 
-Le fait est chiffré au repos hors de la machine, mais le rappel lit le cache local. Après une restauration, le cache doit contenir le fait. Lancez `hermes mnemos restore` avant d'attendre un prefetch. Les requêtes ignorent les jetons de moins de 4 caractères, donc une requête `ok` ne rappelle rien, volontairement.
+Le fait est chiffré au repos hors de la machine, mais le rappel lit le cache local. Après une restauration, le cache doit contenir le fait. Lancez `hermes mnemos-sui restore` avant d'attendre un prefetch. Les requêtes ignorent les jetons de moins de 4 caractères, donc une requête `ok` ne rappelle rien, volontairement.
 
 ## `hermes plugins validate` signale des binaires
 
@@ -38,7 +38,7 @@ La lecture sur le nœud complet a échoué et le repli GraphQL a été refusé p
 
 ## `fullnode read failed (...) and cannot check GraphQL freshness`
 
-Aucune source n'était utilisable : le nœud a échoué et Mnemos n'a pas pu le comparer à GraphQL, il n'a donc pas fait confiance à GraphQL. Vérifiez l'accès réseau à `sui_rpc`. `hermes mnemos doctor` affiche séparément les contrôles `rpc` et `graphql_fresh`.
+Aucune source n'était utilisable : le nœud a échoué et Mnemos n'a pas pu le comparer à GraphQL, il n'a donc pas fait confiance à GraphQL. Vérifiez l'accès réseau à `sui_rpc`. `hermes mnemos-sui doctor` affiche séparément les contrôles `rpc` et `graphql_fresh`.
 
 ## `refusing to sign: ... Mnemos only writes to Sui testnet`
 
@@ -46,7 +46,7 @@ Le `sui_rpc` de `mnemos/config.json` n'a pas annoncé l'identifiant de chaîne d
 
 ## `MemoryIndex uses the pre-0.2.2 key derivation and is read-only`
 
-L'index a été créé avant Argon2id. La restauration et `history --verify` fonctionnent toujours, pas les écritures. Lancez `hermes mnemos init` pour créer un nouvel index. Voir [restauration](restore.md#index-créés-avant-022).
+L'index a été créé avant Argon2id. La restauration et `history --verify` fonctionnent toujours, pas les écritures. Lancez `hermes mnemos-sui init` pour créer un nouvel index. Voir [restauration](restore.md#index-créés-avant-022).
 
 ## Le point de contrôle a levé une erreur et le compactage s'est arrêté
 

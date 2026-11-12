@@ -47,7 +47,7 @@ SALTS_LEGACY = (b"mnemos-aead-v1", b"mnemos-sign-v1", b"mnemos-sui-v1")
 
 LEGACY_READ_ONLY = (
     "MemoryIndex uses the pre-0.2.2 key derivation and is read-only: restore and history still work, "
-    "new writes need a fresh index (`hermes mnemos init`)"
+    "new writes need a fresh index (`hermes mnemos-sui init`)"
 )
 
 _MASTER_CACHE: dict[bytes, bytes] = {}

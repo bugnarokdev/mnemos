@@ -30,7 +30,7 @@ La clé publique des instantanés est enregistrée dans le `MemoryIndex` à sa c
 
 ### Mémoires créées avant 0.2.2
 
-Avant 0.2.2, les trois clés venaient d'un seul HKDF sur la phrase secrète (sels `mnemos-aead-v1`, `mnemos-sign-v1`, `mnemos-sui-v1`). C'est rapide à attaquer hors ligne, car la clé publique et le chiffré sont publics. Mnemos lit toujours ces index : `restore` voit que la clé publique sur la chaîne correspond à l'ancienne dérivation et déchiffre avec l'ancienne clé, et `history --verify` n'a besoin d'aucun secret. Un tel index est en lecture seule : aucun nouvel instantané n'est signé avec les anciennes clés. Pour continuer à écrire, lancez `hermes mnemos init` pour créer un nouveau MemoryIndex, qui reçoit la clé Argon2id. Les nouveaux faits vont dans le nouvel index ; l'ancien reste lisible et vérifiable pour l'historique antérieur. Aucun réglage ne permet de choisir l'ancienne dérivation.
+Avant 0.2.2, les trois clés venaient d'un seul HKDF sur la phrase secrète (sels `mnemos-aead-v1`, `mnemos-sign-v1`, `mnemos-sui-v1`). C'est rapide à attaquer hors ligne, car la clé publique et le chiffré sont publics. Mnemos lit toujours ces index : `restore` voit que la clé publique sur la chaîne correspond à l'ancienne dérivation et déchiffre avec l'ancienne clé, et `history --verify` n'a besoin d'aucun secret. Un tel index est en lecture seule : aucun nouvel instantané n'est signé avec les anciennes clés. Pour continuer à écrire, lancez `hermes mnemos-sui init` pour créer un nouveau MemoryIndex, qui reçoit la clé Argon2id. Les nouveaux faits vont dans le nouvel index ; l'ancien reste lisible et vérifiable pour l'historique antérieur. Aucun réglage ne permet de choisir l'ancienne dérivation.
 
 ## Garde de chaîne
 

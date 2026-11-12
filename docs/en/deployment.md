@@ -33,7 +33,7 @@ cd move/MemoryIndex
 sui move build --dump-bytecode-as-base64
 ```
 
-`hermes mnemos init --bytecode` publishes that JSON and calls `create`.
+`hermes mnemos-sui init --bytecode` publishes that JSON and calls `create`.
 
 ## Faucet
 

@@ -105,7 +105,7 @@ def flush(engine, idem_key: str | None = None) -> dict[str, Any]:
     index_id = str(engine._config.get("index_object_id") or "")
     package_id = str(engine._config.get("package_id") or "")
     if not index_id or not package_id:
-        raise RuntimeError("index object is not configured; run `hermes mnemos init`")
+        raise RuntimeError("index object is not configured; run `hermes mnemos-sui init`")
     with engine._lock:
         head = read_chain_fresh(engine, index_id)
         if head["pubkey"] != engine._keys["pubkey"]:

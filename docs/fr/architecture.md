@@ -30,7 +30,7 @@
 - `mnemos/engine.py` utilise le module natif quand `import mnemos_core` réussit et que le module annonce `core_version()` 0.2.3 ou plus (clés Argon2id et lectures sur le nœud complet) ; un module plus ancien est ignoré.
 - `mnemos/py_engine.py` est le repli : mêmes octets d'instantané, HTTP Walrus, et gRPC Sui (simulation puis exécution). Les points de contrôle sont validés dans ce mode.
 - `mnemos/chain.py` contient les octets d'instantané et la dérivation des clés (Argon2id, puis HKDF par usage), ainsi que l'ancienne dérivation en lecture seule. `mnemos/sui_client.py` vérifie l'identifiant de chaîne du RPC avant chaque signature. `mnemos/reads.py` lit l'état de la chaîne sur le nœud complet, avec un repli GraphQL encadré (voir plus bas).
-- `mnemos/history.py` lit la liste des instantanés du MemoryIndex et vérifie chaque version (sha256 du blob, lien vers le hash précédent, signature Ed25519) pour `hermes mnemos history --verify`.
+- `mnemos/history.py` lit la liste des instantanés du MemoryIndex et vérifie chaque version (sha256 du blob, lien vers le hash précédent, signature Ed25519) pour `hermes mnemos-sui history --verify`.
 - `native/` est la crate PyO3. Elle possède SQLite, XChaCha20-Poly1305, Ed25519, le HTTP Walrus, la preuve de travail du faucet et les transactions Sui (`sui-sdk-types`, `sui-crypto`, `sui-transaction-builder`, `sui-rpc`), avec la même dérivation Argon2id (crate `argon2`) et le même contrôle de chaîne testnet.
 - `move/MemoryIndex` est l'index sur la chaîne.
 
@@ -72,6 +72,6 @@ GraphQL n'est plus qu'un repli, et seulement s'il est prouvé à jour :
 
 Quelle que soit la source, le résultat est vérifié avant usage : l'identifiant renvoyé doit être celui demandé, le type doit être `<package>::memory_index::MemoryIndex` et, pour une écriture, le package doit correspondre à `package_id`. `init` prend le package et l'identifiant du nouveau MemoryIndex dans les effets de la transaction au lieu de chercher parmi les objets du propriétaire, donc une adresse qui possède plusieurs index ne peut pas choisir le mauvais.
 
-Les deux backends suivent le même ordre et les mêmes vérifications. `hermes mnemos doctor` indique la source de la vérification d'index (`readable via grpc`) et un contrôle séparé `graphql_fresh` avec l'écart courant. Les blobs Walrus sont toujours lus depuis l'agrégateur, et leur sha256 est comparé à l'index signé.
+Les deux backends suivent le même ordre et les mêmes vérifications. `hermes mnemos-sui doctor` indique la source de la vérification d'index (`readable via grpc`) et un contrôle séparé `graphql_fresh` avec l'écart courant. Les blobs Walrus sont toujours lus depuis l'agrégateur, et leur sha256 est comparé à l'index signé.
 
 Réglages : `read_source` (`auto` par défaut ; `grpc` désactive le repli GraphQL) et `graphql_max_lag` (`100` par défaut). Voir [configuration](configuration.md#fichier).

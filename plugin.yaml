@@ -1,4 +1,4 @@
-name: mnemos
+name: mnemos-sui
 version: 0.2.3
 description: "Sovereign Hermes memory: client-side encrypted, stored on Walrus testnet, indexed by an owned Sui MemoryIndex."
 requires_hermes: ">=0.23.1"

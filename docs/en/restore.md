@@ -8,7 +8,7 @@ Restore needs two things that are not stored in the wiped home:
 ```bash
 export HERMES_HOME=/path/to/new/profile
 # install the plugin and MNEMOS_SECRET the same way as on the old machine
-hermes mnemos restore --object-id 0xYOUR_INDEX
+hermes mnemos-sui restore --object-id 0xYOUR_INDEX
 ```
 
 You can omit `--object-id` when `index_object_id` is already in `mnemos/config.json`.
@@ -27,13 +27,13 @@ The new profile can then `prefetch` and `mnemos_recall` without another network 
 
 ## Moving a profile
 
-Copy `MNEMOS_SECRET` into the new profile's secret store yourself. Do not commit it. Only `index_object_id` is needed: `hermes mnemos restore --object-id` saves it, and the `package_id` is read from the object's Move type and saved too, so a later `flush` works without `init`. `hermes mnemos restore` rebuilds `mnemos.sqlite`. The old SQLite file is not required.
+Copy `MNEMOS_SECRET` into the new profile's secret store yourself. Do not commit it. Only `index_object_id` is needed: `hermes mnemos-sui restore --object-id` saves it, and the `package_id` is read from the object's Move type and saved too, so a later `flush` works without `init`. `hermes mnemos-sui restore` rebuilds `mnemos.sqlite`. The old SQLite file is not required.
 
 `backup_paths()` returns an empty list because the provider state that lives outside the chain is under `HERMES_HOME`, which Hermes already archives. The chain is the backup that survives deleting that home.
 
 ## Indexes created before 0.2.2
 
-An index created before 0.2.2 has a public key from the old derivation (a single HKDF). `restore` detects it, decrypts with the old key, and returns `"kdf": "legacy", "read_only": true`. `history --verify` works without the secret. A `flush` to that index is refused; run `hermes mnemos init` to create a new index with the Argon2id key. New facts go there, and the old index stays readable. Details: [security](security.md#memories-created-before-022).
+An index created before 0.2.2 has a public key from the old derivation (a single HKDF). `restore` detects it, decrypts with the old key, and returns `"kdf": "legacy", "read_only": true`. `history --verify` works without the secret. A `flush` to that index is refused; run `hermes mnemos-sui init` to create a new index with the Argon2id key. New facts go there, and the old index stays readable. Details: [security](security.md#memories-created-before-022).
 
 ## Limits
 

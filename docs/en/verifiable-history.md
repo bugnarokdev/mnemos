@@ -25,9 +25,9 @@ The contract does not download the Walrus blob. A full check, including "this bl
 ## Check it yourself
 
 ```bash
-hermes mnemos history                       # list every version
-hermes mnemos history --verify              # check every version
-hermes mnemos history --verify --object-id 0x...  --json
+hermes mnemos-sui history                       # list every version
+hermes mnemos-sui history --verify              # check every version
+hermes mnemos-sui history --verify --object-id 0x...  --json
 ```
 
 `--object-id` defaults to `index_object_id` from the config. No secret is needed. For each snapshot, `--verify`:

@@ -31,7 +31,7 @@
 - `mnemos/engine.py` uses the native module when `import mnemos_core` succeeds and the module reports `core_version()` 0.2.3 or newer (Argon2id keys and fullnode reads); an older core is ignored.
 - `mnemos/py_engine.py` is the fallback: same snapshot bytes, Walrus HTTP, and Sui gRPC simulate-then-execute. Checkpoints commit in this mode.
 - `mnemos/chain.py` holds the snapshot bytes and the key derivation (Argon2id, then HKDF per purpose), plus the read-only legacy derivation. `mnemos/sui_client.py` checks the RPC chain id before every signature. `mnemos/reads.py` reads chain state from the fullnode, with a guarded GraphQL fallback (see below).
-- `mnemos/history.py` reads the snapshot list from the MemoryIndex and verifies each version (blob sha256, previous-hash link, Ed25519 signature) for `hermes mnemos history --verify`.
+- `mnemos/history.py` reads the snapshot list from the MemoryIndex and verifies each version (blob sha256, previous-hash link, Ed25519 signature) for `hermes mnemos-sui history --verify`.
 - `native/` is the PyO3 crate. It owns SQLite, XChaCha20-Poly1305, Ed25519, Walrus HTTP, the faucet proof-of-work, and Sui transactions (`sui-sdk-types`, `sui-crypto`, `sui-transaction-builder`, `sui-rpc`), with the same Argon2id derivation (`argon2` crate) and the same testnet chain check.
 - `move/MemoryIndex` is the on-chain index.
 
@@ -73,6 +73,6 @@ GraphQL is now only a fallback, and only when it is provably fresh:
 
 Whatever the source, the result is checked before use: the returned object id must match the one requested, the type must be `<package>::memory_index::MemoryIndex`, and when writing, the package must match `package_id`. `init` takes the package and the new MemoryIndex id from the transaction effects instead of searching the owner's objects, so an address with several indexes cannot pick the wrong one.
 
-Both backends implement the same order and the same checks. `hermes mnemos doctor` reports the index check with its source (`readable via grpc`) and a separate `graphql_fresh` check with the current lag. Walrus blobs are still read from the aggregator, and their sha256 is checked against the signed index.
+Both backends implement the same order and the same checks. `hermes mnemos-sui doctor` reports the index check with its source (`readable via grpc`) and a separate `graphql_fresh` check with the current lag. Walrus blobs are still read from the aggregator, and their sha256 is checked against the signed index.
 
 Settings: `read_source` (`auto` by default; `grpc` disables the GraphQL fallback) and `graphql_max_lag` (default `100`). See [configuration](configuration.md#file-settings).

@@ -14,7 +14,7 @@ The error includes the Sui address. Fund it from <https://faucet.sui.io> if the 
 
 ## `MoveAbort` code 7 on `append`
 
-Code 7 is `E_VERSION`: the client built a snapshot against a stale head. Flush retries the GraphQL read until it is at least the version recorded locally. If this still appears, wait a few seconds and run `hermes mnemos flush` again. The outbox entry stays local until an append succeeds.
+Code 7 is `E_VERSION`: the client built a snapshot against a stale head. Flush retries the GraphQL read until it is at least the version recorded locally. If this still appears, wait a few seconds and run `hermes mnemos-sui flush` again. The outbox entry stays local until an append succeeds.
 
 ## `MoveAbort` code 6
 
@@ -22,7 +22,7 @@ The index already has 32 snapshots. This release does not rotate the object. Cre
 
 ## Prefetch is empty
 
-The fact is encrypted at rest off-box, but recall reads the local cache. After restore, the cache has to contain the fact. Run `hermes mnemos restore` before expecting prefetch to hit. Queries ignore tokens shorter than 4 characters, so a query of `ok` recalls nothing on purpose.
+The fact is encrypted at rest off-box, but recall reads the local cache. After restore, the cache has to contain the fact. Run `hermes mnemos-sui restore` before expecting prefetch to hit. Queries ignore tokens shorter than 4 characters, so a query of `ok` recalls nothing on purpose.
 
 ## `hermes plugins validate` warns about binaries
 
@@ -38,7 +38,7 @@ The fullnode read failed and the GraphQL fallback was refused because its index 
 
 ## `fullnode read failed (...) and cannot check GraphQL freshness`
 
-Neither source could be used: the fullnode failed and Mnemos could not compare it with GraphQL, so it did not trust GraphQL. Check network access to `sui_rpc`. `hermes mnemos doctor` shows the `rpc` and `graphql_fresh` checks separately.
+Neither source could be used: the fullnode failed and Mnemos could not compare it with GraphQL, so it did not trust GraphQL. Check network access to `sui_rpc`. `hermes mnemos-sui doctor` shows the `rpc` and `graphql_fresh` checks separately.
 
 ## `refusing to sign: ... Mnemos only writes to Sui testnet`
 
@@ -46,7 +46,7 @@ The `sui_rpc` in `mnemos/config.json` did not report the Sui testnet chain id, o
 
 ## `MemoryIndex uses the pre-0.2.2 key derivation and is read-only`
 
-The index was created before Argon2id. Restore and `history --verify` still work; writes do not. Run `hermes mnemos init` to create a new index. See [restore](restore.md#indexes-created-before-022).
+The index was created before Argon2id. Restore and `history --verify` still work; writes do not. Run `hermes mnemos-sui init` to create a new index. See [restore](restore.md#indexes-created-before-022).
 
 ## Checkpoint raised and compaction stopped
 

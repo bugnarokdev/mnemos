@@ -50,8 +50,8 @@ echo "secret saved at $WORK/secret (removed when the script exits; copy it if yo
 setup_profile() {
   home=$1
   mkdir -p "$home/plugins" "$home/mnemos"
-  ln -sfn "$ROOT" "$home/plugins/mnemos"
-  printf '%s\n' 'memory:' '  provider: mnemos' > "$home/config.yaml"
+  ln -sfn "$ROOT" "$home/plugins/mnemos-sui"
+  printf '%s\n' 'memory:' '  provider: mnemos-sui' > "$home/config.yaml"
   printf 'MNEMOS_SECRET=%s\n' "$SECRET" > "$home/.env"
 }
 
@@ -61,7 +61,7 @@ echo "compiling MemoryIndex"
 setup_profile "$PROFILE_A"
 export HERMES_HOME=$PROFILE_A
 echo "profile A $HERMES_HOME"
-"$HERMES_BIN" mnemos init --bytecode "$WORK/bytecode.json" | tee "$WORK/init.json"
+"$HERMES_BIN" mnemos-sui init --bytecode "$WORK/bytecode.json" | tee "$WORK/init.json"
 "$PY" - "$WORK/init.json" <<'PY'
 import json, sys
 data = json.load(open(sys.argv[1]))
@@ -99,9 +99,9 @@ path.write_text(json.dumps({
 PY
 
 echo "restoring into profile B"
-"$HERMES_BIN" mnemos restore --object-id "$INDEX"
-echo "hermes mnemos doctor"
-"$HERMES_BIN" mnemos doctor
+"$HERMES_BIN" mnemos-sui restore --object-id "$INDEX"
+echo "hermes mnemos-sui doctor"
+"$HERMES_BIN" mnemos-sui doctor
 echo "hermes memory status (profile B)"
 "$HERMES_BIN" memory status
 echo "recalling through Hermes"

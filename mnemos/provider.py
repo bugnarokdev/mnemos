@@ -353,7 +353,7 @@ class MnemosProvider(MemoryProvider):
             },
             {
                 "key": "index_object_id",
-                "description": "Owned MemoryIndex object id. Leave empty and run `hermes mnemos init` to create one.",
+                "description": "Owned MemoryIndex object id. Leave empty and run `hermes mnemos-sui init` to create one.",
                 "required": False,
                 "default": "",
             },
