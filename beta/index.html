@@ -55,7 +55,7 @@
     </li>
     <li>
       <h2>Keys by policy</h2>
-      <p>Each entry is encrypted with Seal (threshold 2 of 2, <code>mysten-testnet-1</code> and <code>-2</code>). On pull, the key servers dry-run <code>seal_approve</code> and answer members only. Non-members get nothing.</p>
+      <p>Each entry is encrypted with Seal to the key servers its space chose: <code>mysten-testnet-1</code> and <code>-2</code> at 2 of 2 by default. On pull, the key servers dry-run <code>seal_approve</code> and answer members only. Non-members get nothing.</p>
     </li>
     <li>
       <h2>Rust, open source</h2>
@@ -67,37 +67,47 @@
     <div class="bar"><i></i><i></i><i></i><span>MNEMOS_FEATURES=seal scripts/build_core.sh</span></div>
 <pre><span class="p">$</span> hermes mnemos-sui share whoami                 <span class="c"># signer address</span>
 <span class="p">$</span> hermes mnemos-sui share create --name crew     <span class="c"># allowlist + Space, you hold the Cap</span>
+<span class="p">$</span> hermes mnemos-sui share create --name ops --committee
+                                                <span class="c"># Mysten committee 3-of-5, threshold 1</span>
+<span class="p">$</span> hermes mnemos-sui share create --name lab \
+    --key-server 0x&lt;a&gt; --key-server 0x&lt;b&gt; --threshold 1   <span class="c"># your own list</span>
 <span class="p">$</span> hermes mnemos-sui share add 0x&lt;teammate&gt;      <span class="c"># epoch unchanged</span>
 <span class="p">$</span> hermes mnemos-sui share push --text "..."      <span class="c"># encrypt, upload, publish</span>
 <span class="p">$</span> hermes mnemos-sui share join --space 0x&lt;id&gt;   <span class="c"># on the teammate's machine</span>
-<span class="p">$</span> hermes mnemos-sui share pull                   <span class="c"># fetch keys, decrypt, cache</span>
+<span class="p">$</span> hermes mnemos-sui share pull                   <span class="c"># servers read from each entry; exit 4 on wrong_owner</span>
 <span class="p">$</span> hermes mnemos-sui share remove 0x&lt;teammate&gt;   <span class="c"># epoch + 1</span>
 <span class="p">$</span> hermes mnemos-sui share status                 <span class="c"># entries per epoch</span></pre>
   </div>
 
   <div class="cols">
     <div>
+      <h2>Key servers, per space</h2>
+      <p>Chosen once, at <code>share create</code> or <code>share join</code>, and used by every push. Default: <code>mysten-testnet-1</code> and <code>-2</code>, 2 of 2, unchanged from the first preview. <code>--committee</code>: the Mysten testnet committee, 3-of-5 behind its aggregator, threshold 1. <code>--key-server ID… --threshold N</code>: your own list. Readers pass no option: <code>pull</code> reads the servers and threshold from each entry's encrypted header, so older spaces still decrypt, and it only contacts servers it trusts. Entries tied to an object owned by another address come back <code>wrong_owner</code> and <code>pull</code> exits with code 4. No automatic failover yet: a space keeps the servers it was created with.</p>
+    </div>
+    <div>
       <h2>Revocation, honestly</h2>
       <p>Seal keys cannot be taken back. The epoch is part of every key id, and removing a member bumps it. After removal, that member cannot fetch any new key and cannot read anything pushed afterwards. What they already fetched, they keep: keys obtained before removal still decrypt the older entries. The coop test asserts exactly that. Removal protects the future, not the past.</p>
     </div>
     <div>
       <h2>The client underneath</h2>
-      <p><a href="https://github.com/bugnarokdev/sui-seal-client/tree/v0.2.0" target="_blank" rel="noopener noreferrer">sui-seal-client v0.2.0</a>, also BETA: configurable servers and threshold, the Mysten 3-of-5 committee through its aggregator, allowlist, time-lock, owner-only and subscription policies, Python bindings, and 38/38 interop checks against <code>@mysten/seal</code>. The preview branch still pins the v0.1 commit; wiring v0.2 in is next.</p>
+      <p><a href="https://github.com/bugnarokdev/sui-seal-client/tree/v0.2.0" target="_blank" rel="noopener noreferrer">sui-seal-client v0.2.0</a>, also BETA: configurable servers and threshold, the Mysten 3-of-5 committee through its aggregator, allowlist, time-lock, owner-only and subscription policies, Python bindings, and 38/38 interop checks against <code>@mysten/seal</code>. The preview branch pins v0.2.0. Weighted servers and API keys for permissioned servers exist in the client but are not exposed in Mnemos yet.</p>
     </div>
   </div>
 
   <dl class="facts">
     <div><dt>Branch</dt><dd><a href="https://github.com/bugnarokdev/mnemos/tree/preview/seal" target="_blank" rel="noopener noreferrer"><code>preview/seal</code></a></dd></div>
     <div><dt>Docs</dt><dd><a href="https://github.com/bugnarokdev/mnemos/blob/preview/seal/docs/en/preview-seal.md" target="_blank" rel="noopener noreferrer">English</a> · <a href="https://github.com/bugnarokdev/mnemos/blob/preview/seal/docs/fr/preview-seal.md" hreflang="fr" target="_blank" rel="noopener noreferrer">Français</a></dd></div>
-    <div><dt>Test report</dt><dd><a href="https://github.com/bugnarokdev/mnemos/blob/preview/seal/docs/en/test-report-preview-seal.md" target="_blank" rel="noopener noreferrer">Coop e2e: 34/34, two runs</a></dd></div>
-    <div><dt>Seal client</dt><dd><a href="https://github.com/bugnarokdev/sui-seal-client" target="_blank" rel="noopener noreferrer">bugnarokdev/sui-seal-client</a></dd></div>
+    <div><dt>Test report</dt><dd><a href="https://github.com/bugnarokdev/mnemos/blob/preview/seal/docs/en/test-report-preview-seal.md" target="_blank" rel="noopener noreferrer">Coop e2e: 52/52, two runs</a></dd></div>
+    <div><dt>Key servers</dt><dd>2-of-2 default · committee 3-of-5 · custom list</dd></div>
   </dl>
 
   <h2 class="rm-h" id="roadmap">Roadmap <span class="dim">indicative · no dates · order may change</span></h2>
   <ol class="roadmap">
-    <li class="done"><b>Coop beta.</b> Allowlist-based shared spaces on testnet. <span class="dim">This preview.</span></li>
+    <li class="done"><b>Coop beta.</b> Allowlist-based shared spaces on testnet. <span class="dim">First preview.</span></li>
     <li class="done"><b>Client v0.2.</b> Configurable servers and threshold, committee key servers, more policies, Python bindings. <span class="dim">Released in sui-seal-client, BETA.</span></li>
-    <li><b>Wire v0.2 into Mnemos.</b> Committee and failover for shared spaces, time-limited and subscription spaces.</li>
+    <li class="done"><b>Wire v0.2 into Mnemos.</b> Per-space key servers: default 2-of-2, Mysten committee or a custom list, read back from each entry on pull. <span class="dim">This preview, BETA.</span></li>
+    <li><b>Failover and weighted servers.</b> Automatic failover between server sets, weighted servers, API keys for permissioned servers.</li>
+    <li><b>Time-limited and subscription spaces</b>, on the policies already in the client.</li>
     <li><b>Python backend sharing</b> through the bindings, so <code>share</code> no longer needs the native core.</li>
     <li><b>Coop mission board.</b> Missions in a shared Sui object, claimed on chain. A claim makes Seal open that task's memory to the claimer. Delivery is signed and validated by the maintainer; validation unlocks dependent missions, expired claims revert, and reputation is earned on chain, verifiable by anyone.</li>
     <li><b>Security review</b> of the lane and the Move packages.</li>
