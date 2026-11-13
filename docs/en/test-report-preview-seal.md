@@ -3,6 +3,82 @@
 > **BETA (testnet preview).** These results cover a preview branch on Sui testnet, Walrus
 > testnet and the Mysten Seal testnet key servers. They say nothing about mainnet.
 
+## Run of 13 November 2026 (second): Python sharing lane (BETA)
+
+| | |
+| --- | --- |
+| When | 13 November 2026, 02:07 to 02:28 Paris time (UTC+1) |
+| Tested commit | `fd040df` on `preview/seal` (base `main` `f3dff2d`) |
+| Runs | the full suite twice in a row (run 1 at 02:07, run 2 at 02:18), both green, zero errors |
+| Network | as in the previous run: Sui testnet, Walrus testnet, `mysten-testnet-1`, `mysten-testnet-2`, the Mysten testnet committee through the aggregator |
+| Toolchain | as in the previous run; the suite also builds the Python bindings with `scripts/build_seal_py.sh` (maturin 1.16.0) |
+| Dependencies | sui-seal-client `v0.2.0` (`da579f6`) for both lanes: git dependency of the native core, and Python bindings built from the same commit (`sui_seal_client` 0.2.0); packages unchanged |
+
+Results, identical in both runs:
+
+| Suite | Result |
+| --- | --- |
+| `cargo fmt --check` | clean |
+| `cargo test --release` (default features) | 8 passed |
+| `cargo test --release --features seal` | 16 passed (native lane unchanged) |
+| `cargo clippy --release --all-targets -D warnings` | clean, with and without `seal` |
+| `sui move test` in `move/SharedSpace` | 7 passed |
+| `pytest`, `MNEMOS_REQUIRE_RUST=1 MNEMOS_REQUIRE_SEAL_PY=1` | 106 passed (62 before + 44: `test_share.py` now holds 57 checks, see below) |
+| `pytest`, `MNEMOS_BACKEND=python MNEMOS_REQUIRE_SEAL_PY=1` | 105 passed, 1 skipped (`test_chain.py`, native module optional, unrelated to sharing); no share test is skipped any more |
+| Personal end-to-end: rust, python, cross, guard | all passed, fresh indexes in each run |
+| Coop end-to-end, `scripts/e2e_coop.sh` | 84 assertions passed (the 52 of the previous run + 32 new) |
+
+`tests/test_share.py` (57): lane selection and refusal without the bindings; the
+per-lane tests (signer, refused settings, key file, Cap) on each lane; parity: both lanes
+accept or refuse the same 34 settings with the same message and derive the same signer
+from 7 key forms; the Python lane against the native unit vectors (key id, header server
+sets, Space parsing), the exact entry bytes, and an offline encrypt/decrypt with
+in-process key servers.
+
+New coop assertions (cross-lane):
+
+1. No gas: Python `whoami` gives the native addresses for A, B and C; Python refuses
+   `create --threshold 3` before any transaction; Python `status` and `pull` of the
+   default space equal the native output.
+2. Python A creates a space (default 2-of-2, stored in `share.json` exactly like a native
+   one) and adds B (epoch 0).
+3. Python writes, native reads: native B reads the Python entry exactly (header 2-of-2,
+   author A). Native writes, Python reads: native A pushes to the Python-created space and
+   Python B reads both entries; Python and native pulls of B are identical. Python C is
+   refused (exit 3).
+4. Removal through the Python lane: epoch 0 → 1; the new Python entry carries epoch 1;
+   `status` is identical on both lanes. B is refused for every entry on both lanes and
+   keeps only what it read before. A live Python session of B still decrypts the old
+   entries from held keys (`no_cached_key`, then `no_access` for the new one), as
+   documented for the native lane. A reads all 3 entries, identically on both lanes.
+5. Committee: Python B reads the native committee entry; Python A pushes to the committee
+   space (the stored setting is followed) and native B reads it with a committee header.
+6. 1-of-2: Python A reads the native entry; Python A pushes with threshold 1 and native A
+   reads it.
+7. The Python lane re-reads the space of 12 November identically.
+
+Gas, measured from balances before and after each run: A paid 0.061473816 SUI per run
+(19 transactions: the 11 of the previous run, 0.040277868 SUI, plus 8 cross-lane ones,
+0.021195948 SUI), 0.122947632 SUI for both. Before the runs, a write smoke test of the
+Python lane (create, add, push, remove: 4 transactions) cost A 0.01190498 SUI. The
+personal Mnemos address paid 0.028414176 SUI per run, as before.
+
+Run 1 (cross-lane transactions; the other spaces are as in the previous run):
+
+| Space | Space object | Transactions |
+| --- | --- | --- |
+| created by the Python lane (2-of-2) | [`0x9b374945…5d97`](https://testnet.suivision.xyz/object/0x9b374945e5dc14ed03c4cd96171d370068d84998056efe1bc93cff2d15ad5d97) | Python create [`4FyKtfrrmY…`](https://testnet.suivision.xyz/txblock/4FyKtfrrmYQFEqb7FzW2FD6ZZpckAGJwE2sSZzJ3Hf1H), Python add B [`3uhuvRJ948…`](https://testnet.suivision.xyz/txblock/3uhuvRJ948mZYJnf2cUrMGQzvwHRmhkx7nG98mN9U9SS), Python push [`6Jb6a768uR…`](https://testnet.suivision.xyz/txblock/6Jb6a768uRrX37gFxuuqVxhaBx8jvvQWu1XuvgKdYV6A) · [`5v5o3RGM6S…`](https://aggregator.walrus-testnet.walrus.space/v1/blobs/5v5o3RGM6SWJOevmcx593G8UYLeW7L_4wZaTzV6XhTg), native push [`7jSJLsL18K…`](https://testnet.suivision.xyz/txblock/7jSJLsL18K6L7APkeYEHpujMTycRZqPPw7pyLWwcFeEk) · [`wbmepVztU_…`](https://aggregator.walrus-testnet.walrus.space/v1/blobs/wbmepVztU_knX5-ZvcBwYjscxQ1OLPfDHXYITjewG1w), Python remove B [`ARTddNLsVC…`](https://testnet.suivision.xyz/txblock/ARTddNLsVC5CHqaQeJHK23ZxXSVMaRM3WXGYZKVyfN4R), Python push [`HfzrK5FB1J…`](https://testnet.suivision.xyz/txblock/HfzrK5FB1JnhZoZ4odiQ3Qm7gmxsXL3WiiwdztNfdNsy) · [`H8RNoQZEyc…`](https://aggregator.walrus-testnet.walrus.space/v1/blobs/H8RNoQZEycXKpPFLGY_a9xLBbAEgUu2dFkab2aMX8MA) |
+| committee (the run's) | [`0x88a39ff7…e217`](https://testnet.suivision.xyz/object/0x88a39ff7800dd1921cdb3502b453edb9a8dce3a8ec836efc55127185452de217) | Python push [`Ee14qjTnak…`](https://testnet.suivision.xyz/txblock/Ee14qjTnakEqHo6rjsNJyos5uQUnUqZoSP4khUAQ6hbP) · [`dBpyoRCfcn…`](https://aggregator.walrus-testnet.walrus.space/v1/blobs/dBpyoRCfcn-UeVeE9EXgNmOZ5HYw6SGHPRWdzSzzhXY) |
+| 1-of-2 (the run's) | [`0xae7605f8…f87d`](https://testnet.suivision.xyz/object/0xae7605f84abaa52fb76bc026f2c626e1fd1e1f78aa7af402975b66e5e43cf87d) | Python push [`4Lo3HzFtuV…`](https://testnet.suivision.xyz/txblock/4Lo3HzFtuVbiWAbC6ZzP8Z5WwFTomM2BYpaoBboF8dL4) · [`a6w2Phl9PO…`](https://aggregator.walrus-testnet.walrus.space/v1/blobs/a6w2Phl9POD7cjsC79exTUDColKj8fEgo8rmp3c8gYE) |
+
+Run 2:
+
+| Space | Space object | Transactions |
+| --- | --- | --- |
+| created by the Python lane (2-of-2) | [`0x148254f5…bb0f`](https://testnet.suivision.xyz/object/0x148254f58f5e1cf4f570ee1d2da906122f6186941d009c983849fdbe44e8bb0f) | Python create [`EkVfxi41uV…`](https://testnet.suivision.xyz/txblock/EkVfxi41uVNZPJLQpBUqcwHZHJjeUBsRDcuphjA63Jfq), Python add B [`9hLaEvDakA…`](https://testnet.suivision.xyz/txblock/9hLaEvDakAx3Q7zS4PUWo3rYrTTjF9YRs1oRHt1kqV1A), Python push [`3iexDinELq…`](https://testnet.suivision.xyz/txblock/3iexDinELqWHytYxrEcx1fzmCJW9Q71qFpamgTFY1srB) · [`VXMVm8-Q1N…`](https://aggregator.walrus-testnet.walrus.space/v1/blobs/VXMVm8-Q1NztuBwh2j4uWeAJqWiVvpY8R7eqRw4auCY), native push [`9U26PTMeex…`](https://testnet.suivision.xyz/txblock/9U26PTMeexaQbS6ig1WYirzDYrc8RocknQRNAbEjFiZU) · [`o7ScgiqCvQ…`](https://aggregator.walrus-testnet.walrus.space/v1/blobs/o7ScgiqCvQhFsLbmd33pn25ADvWrn1a0YgG219PVB9M), Python remove B [`BZsN2Bv33S…`](https://testnet.suivision.xyz/txblock/BZsN2Bv33Sv48YwzrX8251ZZCheTEH7YGojuwMexbktr), Python push [`DiTZ4ucaV5…`](https://testnet.suivision.xyz/txblock/DiTZ4ucaV5VgkXx8L9u9fF1JZk7x72UPTSCaRPSNGmAP) · [`8D_RKiardW…`](https://aggregator.walrus-testnet.walrus.space/v1/blobs/8D_RKiardWSbnAZzyIwyoDVesgHL3HiwEWCfiH8SDvg) |
+| committee (the run's) | [`0x56ee047f…db3f`](https://testnet.suivision.xyz/object/0x56ee047f151b15ecd1731aa7716071f51414d0fa2b2639a0b2a417b5ad78db3f) | Python push [`DmUBroFd1c…`](https://testnet.suivision.xyz/txblock/DmUBroFd1c9NE9VNgVgU59N3TxGbbVeVuJCVftX5yfuM) · [`mifFrPEK-f…`](https://aggregator.walrus-testnet.walrus.space/v1/blobs/mifFrPEK-ffmfSDvsJ55JmJGDSbZFA55wt3n9QT0WnM) |
+| 1-of-2 (the run's) | [`0xf6fbdd7f…dcca`](https://testnet.suivision.xyz/object/0xf6fbdd7f48252f07274f47bff625b7f649ca6d695dcd9d0e49bab19287c9dcca) | Python push [`G4adaGVo5a…`](https://testnet.suivision.xyz/txblock/G4adaGVo5awGdWYfFhzzkNh6Nf3RGZ8dEFP97w1xPcsv) · [`MiXSSrxS90…`](https://aggregator.walrus-testnet.walrus.space/v1/blobs/MiXSSrxS90lFQ3eFtIfhouBQol3DXLsEGKvlTwrQi-s) |
+
 ## Run of 13 November 2026: sui-seal-client v0.2.0, key servers (BETA)
 
 | | |

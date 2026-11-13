@@ -4,6 +4,85 @@
 > testnet, Walrus testnet et les serveurs de clés Seal testnet de Mysten. Ils ne disent
 > rien du mainnet.
 
+## Passage du 13 novembre 2026 (second) : voie de partage Python (BETA)
+
+| | |
+| --- | --- |
+| Quand | 13 novembre 2026, de 2 h 07 à 2 h 28, heure de Paris (UTC+1) |
+| Commit testé | `fd040df` sur `preview/seal` (base `main` `f3dff2d`) |
+| Passages | la suite complète deux fois de suite (passage 1 à 2 h 07, passage 2 à 2 h 18), tous deux au vert, zéro erreur |
+| Réseau | comme au passage précédent : Sui testnet, Walrus testnet, `mysten-testnet-1`, `mysten-testnet-2`, le comité testnet de Mysten via l'agrégateur |
+| Outils | comme au passage précédent ; la suite compile aussi les bindings Python avec `scripts/build_seal_py.sh` (maturin 1.16.0) |
+| Dépendances | sui-seal-client `v0.2.0` (`da579f6`) pour les deux voies : dépendance git du cœur natif, et bindings Python compilés depuis le même commit (`sui_seal_client` 0.2.0) ; packages inchangés |
+
+Résultats, identiques aux deux passages :
+
+| Suite | Résultat |
+| --- | --- |
+| `cargo fmt --check` | propre |
+| `cargo test --release` (features par défaut) | 8 réussis |
+| `cargo test --release --features seal` | 16 réussis (voie native inchangée) |
+| `cargo clippy --release --all-targets -D warnings` | propre, avec et sans `seal` |
+| `sui move test` dans `move/SharedSpace` | 7 réussis |
+| `pytest`, `MNEMOS_REQUIRE_RUST=1 MNEMOS_REQUIRE_SEAL_PY=1` | 106 réussis (62 avant + 44 : `test_share.py` compte maintenant 57 vérifications, voir plus bas) |
+| `pytest`, `MNEMOS_BACKEND=python MNEMOS_REQUIRE_SEAL_PY=1` | 105 réussis, 1 ignoré (`test_chain.py`, module natif optionnel, sans lien avec le partage) ; plus aucun test de partage n'est ignoré |
+| Bout en bout personnel : rust, python, cross, guard | tous réussis, index neufs à chaque passage |
+| Bout en bout coop, `scripts/e2e_coop.sh` | 84 assertions réussies (les 52 du passage précédent + 32 nouvelles) |
+
+`tests/test_share.py` (57) : choix de la voie et refus sans les bindings ; les tests par
+voie (signataire, réglages refusés, fichier de clé, Cap) sur chaque voie ; parité : les
+deux voies acceptent ou refusent les mêmes 34 réglages avec le même message et dérivent
+le même signataire depuis 7 formes de clé ; la voie Python face aux vecteurs unitaires
+natifs (id de clé, jeux de serveurs des en-têtes, lecture du Space), les octets exacts
+d'une entrée, et un chiffrement/déchiffrement hors ligne avec des serveurs de clés en
+mémoire.
+
+Nouvelles assertions coop (entre voies) :
+
+1. Sans gas : `whoami` Python donne les adresses natives de A, B et C ; Python refuse
+   `create --threshold 3` avant toute transaction ; `status` et `pull` Python de l'espace
+   par défaut égalent la sortie native.
+2. A en Python crée un espace (2 sur 2 par défaut, enregistré dans `share.json`
+   exactement comme un espace natif) et ajoute B (epoch 0).
+3. Python écrit, natif lit : B en natif lit exactement l'entrée Python (en-tête 2 sur 2,
+   auteur A). Natif écrit, Python lit : A en natif publie dans l'espace créé en Python et
+   B en Python lit les deux entrées ; les pulls Python et natif de B sont identiques. C en
+   Python est refusé (code 3).
+4. Retrait par la voie Python : epoch 0 → 1 ; la nouvelle entrée Python porte l'epoch 1 ;
+   `status` est identique sur les deux voies. B est refusé pour toutes les entrées sur les
+   deux voies et ne garde que ce qu'il avait lu. Une session Python de B restée ouverte
+   déchiffre encore les anciennes entrées avec les clés déjà obtenues (`no_cached_key`,
+   puis `no_access` pour la nouvelle), comme documenté pour la voie native. A lit les 3
+   entrées, à l'identique sur les deux voies.
+5. Comité : B en Python lit l'entrée native du comité ; A en Python publie dans l'espace
+   comité (le réglage enregistré est suivi) et B en natif la lit avec un en-tête comité.
+6. 1 sur 2 : A en Python lit l'entrée native ; A en Python publie avec le seuil 1 et A en
+   natif la lit.
+7. La voie Python relit à l'identique l'espace du 12 novembre.
+
+Gas, mesuré par les soldes avant et après chaque passage : A a payé 0,061473816 SUI par
+passage (19 transactions : les 11 du passage précédent, 0,040277868 SUI, plus 8 entre
+voies, 0,021195948 SUI), 0,122947632 SUI pour les deux. Avant les passages, un test
+d'écriture de la voie Python (create, add, push, remove : 4 transactions) a coûté
+0,01190498 SUI à A. L'adresse Mnemos personnelle a payé 0,028414176 SUI par passage,
+comme avant.
+
+Passage 1 (transactions entre voies ; les autres espaces sont comme au passage précédent) :
+
+| Espace | Objet Space | Transactions |
+| --- | --- | --- |
+| créé par la voie Python (2 sur 2) | [`0x9b374945…5d97`](https://testnet.suivision.xyz/object/0x9b374945e5dc14ed03c4cd96171d370068d84998056efe1bc93cff2d15ad5d97) | Python create [`4FyKtfrrmY…`](https://testnet.suivision.xyz/txblock/4FyKtfrrmYQFEqb7FzW2FD6ZZpckAGJwE2sSZzJ3Hf1H), Python add B [`3uhuvRJ948…`](https://testnet.suivision.xyz/txblock/3uhuvRJ948mZYJnf2cUrMGQzvwHRmhkx7nG98mN9U9SS), Python push [`6Jb6a768uR…`](https://testnet.suivision.xyz/txblock/6Jb6a768uRrX37gFxuuqVxhaBx8jvvQWu1XuvgKdYV6A) · [`5v5o3RGM6S…`](https://aggregator.walrus-testnet.walrus.space/v1/blobs/5v5o3RGM6SWJOevmcx593G8UYLeW7L_4wZaTzV6XhTg), natif push [`7jSJLsL18K…`](https://testnet.suivision.xyz/txblock/7jSJLsL18K6L7APkeYEHpujMTycRZqPPw7pyLWwcFeEk) · [`wbmepVztU_…`](https://aggregator.walrus-testnet.walrus.space/v1/blobs/wbmepVztU_knX5-ZvcBwYjscxQ1OLPfDHXYITjewG1w), Python remove B [`ARTddNLsVC…`](https://testnet.suivision.xyz/txblock/ARTddNLsVC5CHqaQeJHK23ZxXSVMaRM3WXGYZKVyfN4R), Python push [`HfzrK5FB1J…`](https://testnet.suivision.xyz/txblock/HfzrK5FB1JnhZoZ4odiQ3Qm7gmxsXL3WiiwdztNfdNsy) · [`H8RNoQZEyc…`](https://aggregator.walrus-testnet.walrus.space/v1/blobs/H8RNoQZEycXKpPFLGY_a9xLBbAEgUu2dFkab2aMX8MA) |
+| comité (du passage) | [`0x88a39ff7…e217`](https://testnet.suivision.xyz/object/0x88a39ff7800dd1921cdb3502b453edb9a8dce3a8ec836efc55127185452de217) | Python push [`Ee14qjTnak…`](https://testnet.suivision.xyz/txblock/Ee14qjTnakEqHo6rjsNJyos5uQUnUqZoSP4khUAQ6hbP) · [`dBpyoRCfcn…`](https://aggregator.walrus-testnet.walrus.space/v1/blobs/dBpyoRCfcn-UeVeE9EXgNmOZ5HYw6SGHPRWdzSzzhXY) |
+| 1 sur 2 (du passage) | [`0xae7605f8…f87d`](https://testnet.suivision.xyz/object/0xae7605f84abaa52fb76bc026f2c626e1fd1e1f78aa7af402975b66e5e43cf87d) | Python push [`4Lo3HzFtuV…`](https://testnet.suivision.xyz/txblock/4Lo3HzFtuVbiWAbC6ZzP8Z5WwFTomM2BYpaoBboF8dL4) · [`a6w2Phl9PO…`](https://aggregator.walrus-testnet.walrus.space/v1/blobs/a6w2Phl9POD7cjsC79exTUDColKj8fEgo8rmp3c8gYE) |
+
+Passage 2 :
+
+| Espace | Objet Space | Transactions |
+| --- | --- | --- |
+| créé par la voie Python (2 sur 2) | [`0x148254f5…bb0f`](https://testnet.suivision.xyz/object/0x148254f58f5e1cf4f570ee1d2da906122f6186941d009c983849fdbe44e8bb0f) | Python create [`EkVfxi41uV…`](https://testnet.suivision.xyz/txblock/EkVfxi41uVNZPJLQpBUqcwHZHJjeUBsRDcuphjA63Jfq), Python add B [`9hLaEvDakA…`](https://testnet.suivision.xyz/txblock/9hLaEvDakAx3Q7zS4PUWo3rYrTTjF9YRs1oRHt1kqV1A), Python push [`3iexDinELq…`](https://testnet.suivision.xyz/txblock/3iexDinELqWHytYxrEcx1fzmCJW9Q71qFpamgTFY1srB) · [`VXMVm8-Q1N…`](https://aggregator.walrus-testnet.walrus.space/v1/blobs/VXMVm8-Q1NztuBwh2j4uWeAJqWiVvpY8R7eqRw4auCY), natif push [`9U26PTMeex…`](https://testnet.suivision.xyz/txblock/9U26PTMeexaQbS6ig1WYirzDYrc8RocknQRNAbEjFiZU) · [`o7ScgiqCvQ…`](https://aggregator.walrus-testnet.walrus.space/v1/blobs/o7ScgiqCvQhFsLbmd33pn25ADvWrn1a0YgG219PVB9M), Python remove B [`BZsN2Bv33S…`](https://testnet.suivision.xyz/txblock/BZsN2Bv33Sv48YwzrX8251ZZCheTEH7YGojuwMexbktr), Python push [`DiTZ4ucaV5…`](https://testnet.suivision.xyz/txblock/DiTZ4ucaV5VgkXx8L9u9fF1JZk7x72UPTSCaRPSNGmAP) · [`8D_RKiardW…`](https://aggregator.walrus-testnet.walrus.space/v1/blobs/8D_RKiardWSbnAZzyIwyoDVesgHL3HiwEWCfiH8SDvg) |
+| comité (du passage) | [`0x56ee047f…db3f`](https://testnet.suivision.xyz/object/0x56ee047f151b15ecd1731aa7716071f51414d0fa2b2639a0b2a417b5ad78db3f) | Python push [`DmUBroFd1c…`](https://testnet.suivision.xyz/txblock/DmUBroFd1c9NE9VNgVgU59N3TxGbbVeVuJCVftX5yfuM) · [`mifFrPEK-f…`](https://aggregator.walrus-testnet.walrus.space/v1/blobs/mifFrPEK-ffmfSDvsJ55JmJGDSbZFA55wt3n9QT0WnM) |
+| 1 sur 2 (du passage) | [`0xf6fbdd7f…dcca`](https://testnet.suivision.xyz/object/0xf6fbdd7f48252f07274f47bff625b7f649ca6d695dcd9d0e49bab19287c9dcca) | Python push [`G4adaGVo5a…`](https://testnet.suivision.xyz/txblock/G4adaGVo5awGdWYfFhzzkNh6Nf3RGZ8dEFP97w1xPcsv) · [`MiXSSrxS90…`](https://aggregator.walrus-testnet.walrus.space/v1/blobs/MiXSSrxS90lFQ3eFtIfhouBQol3DXLsEGKvlTwrQi-s) |
+
 ## Passage du 13 novembre 2026 : sui-seal-client v0.2.0, serveurs de clés (BETA)
 
 | | |
