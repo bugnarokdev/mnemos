@@ -17,8 +17,11 @@ Environment:
 
 Besides the default space (Mysten open testnet servers, 2-of-2), the run creates a space
 on the Mysten testnet committee (3-of-5 behind the Mysten aggregator) and a space with a
-custom threshold (1-of-2). Gas: A pays 6 transactions for the default space and 5 for the
-two others.
+custom threshold (1-of-2). Then the same steps cross the two implementations of the lane
+(native core and Python sui-seal-client bindings): a space created by the Python lane,
+entries written by one lane and read by the other, removal and epoch through the Python
+lane, and Python entries in the committee and 1-of-2 spaces. Gas: A pays 6 transactions
+for the default space, 5 for the two others and 8 for the cross-lane steps.
 """
 
 from __future__ import annotations
@@ -38,7 +41,7 @@ sys.path.insert(0, str(ROOT))
 from mnemos import history, reads  # noqa: E402
 from mnemos.engine import open_engine  # noqa: E402
 from mnemos.py_engine import DEFAULTS, load_file_config, save_file_config, walrus_get  # noqa: E402
-from mnemos.share import native_share  # noqa: E402
+from mnemos.share import native_share, python_share  # noqa: E402
 
 PY = sys.executable
 WORK = Path(os.environ["E2E_WORK"])
@@ -71,17 +74,20 @@ def home(who: str) -> Path:
     return WORK / who
 
 
-def cli(who: str, *args: str, expect: int = 0) -> dict:
-    """Run `python -m mnemos.share` (the code behind `hermes mnemos-sui share`)."""
-    env = dict(os.environ, MNEMOS_SHARE_KEY_FILE=KEYS[who])
-    env.pop("MNEMOS_BACKEND", None)
+def cli(who: str, *args: str, expect: int = 0, lane: str = "rust") -> dict:
+    """Run `python -m mnemos.share` (the code behind `hermes mnemos-sui share`) on one lane:
+    "rust" (native core) or "python" (sui-seal-client Python bindings)."""
+    env = dict(os.environ, MNEMOS_SHARE_KEY_FILE=KEYS[who], MNEMOS_BACKEND=lane)
     cmd = [PY, "-m", "mnemos.share", "--home", str(home(who)), *args]
     done = subprocess.run(cmd, cwd=ROOT, env=env, capture_output=True, text=True, timeout=600)
     if done.returncode != expect:
         sys.stderr.write(done.stdout + done.stderr)
         check(False, f"{who}: share {' '.join(args)} exited {done.returncode}, expected {expect}")
     out = json.loads(done.stdout) if done.stdout.strip() else {}
-    record["steps"].append({"who": who, "cmd": ["share", *args], "exit": done.returncode, "out": out})
+    step = {"who": who, "cmd": ["share", *args], "exit": done.returncode, "out": out}
+    if lane != "rust":
+        step["lane"] = lane
+    record["steps"].append(step)
     return out
 
 
@@ -115,6 +121,7 @@ def main() -> None:
         (home(who) / "mnemos").mkdir(parents=True)
     print(f"BETA (testnet preview) coop e2e, run {RUN}, work {WORK}")
     native_share()  # fails fast if the core lacks the seal feature
+    python_share()  # ... or the Python bindings are missing
 
     # --- A's personal memory: fresh MemoryIndex, two facts, two snapshots ---------------
     print("A personal memory")
@@ -273,6 +280,100 @@ def main() -> None:
     check(texts(pull_a_default) == expected_epoch0 + [new_text] and seals(pull_a_default) == [DEFAULT_SEAL] * 4,
           "the default space is unaffected by the other spaces")
 
+    # --- Cross-lane (BETA): native core and Python bindings in the same spaces ----------
+    def py(who: str, *args: str, expect: int = 0) -> dict:
+        return cli(who, *args, expect=expect, lane="python")
+
+    print("Python lane: same signers, same refusals, no gas")
+    check({who: py(who, "whoami")["address"] for who in ("a", "b", "c")} == addr, "Python whoami gives the native addresses")
+    py_refused = py("a", "create", "--name", "bad", "--threshold", "3", expect=1)
+    check(py_refused == {} and "bad" not in share_state("a")["spaces"], "Python refuses an impossible threshold before any transaction")
+    check(py("a", "status") == status, "Python status of the default space equals the native one")
+    check(py("a", "pull") == pull_a_default, "Python pull of the default space equals the native one")
+
+    print("Python A creates a space and adds B")
+    pyc = py("a", "create", "--name", "py")
+    record["py_space"] = pyc
+    check(pyc["epoch"] == 0 and pyc["owner"] == addr["a"] and pyc["seal"] == {"key_server_profile": "testnet", **DEFAULT_SEAL},
+          "Python space created at epoch 0, owned by A, default key servers")
+    check(sorted(share_state("a")["spaces"]["py"]) == ["cap_id", "list_id", "owner", "space_id"],
+          "Python stores the space in share.json exactly like the native lane")
+    py_added = py("a", "add", "--name", "py", addr["b"])
+    check(py_added["epoch_before"] == 0 and py_added["epoch"] == 0, "Python add keeps epoch 0")
+
+    print("Python writes, native reads; native writes, Python reads")
+    py_text = f"coop {RUN} cross entry 1: written by the Python lane, ünïcode ok"
+    py_push = py("a", "push", "--name", "py", "--text", py_text)
+    record["py_push_epoch0"] = py_push
+    check(py_push["epoch"] == 0 and len(py_push["entries"]) == 1, "Python published 1 entry at epoch 0")
+    cli("b", "join", "--name", "py", "--space", pyc["space_id"])
+    x_b = cli("b", "pull", "--name", "py")
+    record["cross_pull_b_native"] = x_b
+    check(x_b["counts"] == {"ok": 1, **NO_ERRORS} and texts(x_b) == [py_text], "native B reads the Python entry exactly")
+    check(seals(x_b) == [DEFAULT_SEAL] and x_b["entries"][0]["author"] == addr["a"], "its header and author are the native ones")
+    rs_text = f"coop {RUN} cross entry 2: written by the native lane"
+    rs_push = cli("a", "push", "--name", "py", "--text", rs_text)
+    check(rs_push["epoch"] == 0, "native A pushes to the Python-created space (same share.json)")
+    x_b_py = py("b", "pull", "--name", "py")
+    record["cross_pull_b_python"] = x_b_py
+    check(x_b_py["counts"] == {"ok": 2, **NO_ERRORS} and texts(x_b_py) == [py_text, rs_text],
+          "Python B reads both entries (Python and native) exactly")
+    check(x_b_py == cli("b", "pull", "--name", "py"), "Python and native pulls of B are identical")
+    cli("c", "join", "--name", "py", "--space", pyc["space_id"])
+    x_c = py("c", "pull", "--name", "py", expect=3)
+    check(x_c["counts"]["no_access"] == 2 and not texts(x_c), "Python C (never a member) is refused with exit 3")
+    with open(KEYS["b"], encoding="utf-8") as fh:
+        b_py_live = python_share()(json.dumps({}), fh.read().strip())
+    check(texts(json.loads(b_py_live.pull(pyc["space_id"], True))) == [py_text, rs_text],
+          "B (live Python session) fetched keys for the 2 epoch-0 entries")
+
+    print("Python A removes B (epoch bump) and pushes")
+    py_removed = py("a", "remove", "--name", "py", addr["b"])
+    record["py_remove_b"] = py_removed
+    check(py_removed["epoch_before"] == 0 and py_removed["epoch"] == 1, "Python remove bumps the epoch 0 -> 1")
+    py_text2 = f"coop {RUN} cross entry 3: after B left, Python lane"
+    py_push2 = py("a", "push", "--name", "py", "--text", py_text2)
+    check(py_push2["epoch"] == 1 and py_push2["entries"][0]["key_id"][64:80] == (1).to_bytes(8, "little").hex(),
+          "Python encrypts the new entry under epoch 1")
+    py_status = py("a", "status", "--name", "py")
+    check(py_status == cli("a", "status", "--name", "py") and py_status["entries_per_epoch"] == {"0": 2, "1": 1},
+          "status: 2 entries at epoch 0, 1 at epoch 1 (same on both lanes)")
+    for lane in ("rust", "python"):
+        gone = cli("b", "pull", "--name", "py", expect=3, lane=lane)
+        check(gone["counts"]["no_access"] == 3 and gone["counts"]["ok"] == 0, f"B ({lane}) is refused for every entry after removal")
+        check([row.get("cached_text") for row in gone["entries"][:2]] == [py_text, rs_text] and "cached_text" not in gone["entries"][2],
+              f"B ({lane}) keeps only what it read before the removal")
+    held = json.loads(b_py_live.pull(pyc["space_id"], False))
+    check(texts(held) == [py_text, rs_text] and held["entries"][2]["status"] == "no_cached_key",
+          "DOCUMENTED (Python lane too): held keys still decrypt the old entries, not the epoch-1 one")
+    check(json.loads(b_py_live.pull(pyc["space_id"], True))["entries"][2]["status"] == "no_access",
+          "B's live Python session is refused the epoch-1 key")
+    x_a = py("a", "pull", "--name", "py")
+    record["cross_pull_a"] = x_a
+    check(texts(x_a) == [py_text, rs_text, py_text2] and x_a == cli("a", "pull", "--name", "py"),
+          "A reads all 3 entries, identical on both lanes")
+
+    print("Python lane on the committee and 1-of-2 spaces")
+    com_py_b = py("b", "pull", "--name", "committee")
+    check(com_py_b == com_b, "Python B reads the native committee entry, identical to the native pull")
+    com_py_text = f"coop {RUN} committee entry 2: written by the Python lane"
+    com_py_push = py("a", "push", "--name", "committee", "--text", com_py_text)
+    check(com_py_push["seal"]["key_servers"] == [COMMITTEE], "Python push follows the committee setting stored with the space")
+    com_rs_b = cli("b", "pull", "--name", "committee")
+    record["cross_committee_pull_b"] = com_rs_b
+    check(com_rs_b["counts"] == {"ok": 2, **NO_ERRORS} and texts(com_rs_b) == [com_text, com_py_text]
+          and seals(com_rs_b) == [{"key_servers": [COMMITTEE], "threshold": 1}] * 2,
+          "native B reads the Python committee entry (committee header, threshold 1)")
+    low_py_a = py("a", "pull", "--name", "one-of-two")
+    check(low_py_a == low_a, "Python A reads the native 1-of-2 entry, identical to the native pull")
+    low_py_text = f"coop {RUN} one-of-two entry 2: written by the Python lane"
+    low_py_push = py("a", "push", "--name", "one-of-two", "--text", low_py_text)
+    check(low_py_push["seal"] == low_push["seal"], "Python push keeps the custom 1-of-2 settings")
+    low_rs_a = cli("a", "pull", "--name", "one-of-two")
+    record["cross_custom_pull_a"] = low_rs_a
+    check(texts(low_rs_a) == [low_text, low_py_text] and seals(low_rs_a) == [{"key_servers": [TESTNET_1, TESTNET_2], "threshold": 1}] * 2,
+          "native A reads the Python 1-of-2 entry (threshold 1 header)")
+
     # --- Backward compatibility: a space written by an earlier run --------------------
     if LEGACY:
         print("A re-reads the space of an earlier run")
@@ -285,6 +386,7 @@ def main() -> None:
         check(legacy["counts"] == {"ok": len(old_texts), **NO_ERRORS} and texts(legacy) == old_texts,
               f"A reads the {len(old_texts)} entries of the earlier space (run {old['run']}) unchanged")
         check(all(seal == DEFAULT_SEAL for seal in seals(legacy)), "their headers are the first preview's 2-of-2")
+        check(py("a", "pull", "--name", "legacy") == legacy, "the Python lane reads the earlier space identically")
 
     # --- A's personal memory is unchanged ---------------------------------------------
     print("A personal memory after sharing")

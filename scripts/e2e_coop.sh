@@ -1,7 +1,9 @@
 #!/bin/sh
 # BETA (testnet preview): end-to-end check of the sharing lane on Sui testnet, Walrus testnet and
-# the Mysten Seal testnet key servers. Needs mnemos_core built with the seal feature:
+# the Mysten Seal testnet key servers. Runs both implementations of the lane, so it needs
+# mnemos_core built with the seal feature and the sui-seal-client Python bindings:
 #   MNEMOS_FEATURES=seal scripts/build_core.sh
+#   scripts/build_seal_py.sh
 #
 # Required environment (key files are read, never printed):
 #   SHARE_KEY_A, SHARE_KEY_B, SHARE_KEY_C  signer key files (suiprivkey, keystore base64
@@ -10,12 +12,13 @@
 #                                          for A's fresh MemoryIndex.
 # Optional:
 #   MNEMOS_PACKAGE_ID  MemoryIndex package (default: the 0.2.3 test package)
-#   MNEMOS_PYTHON      interpreter with mnemos_core installed (default python3)
+#   MNEMOS_PYTHON      interpreter with mnemos_core and sui_seal_client (default python3)
 #   E2E_WORK, E2E_REPORT
 #   E2E_LEGACY_REPORT  record of an earlier run: A re-reads that run's space (no gas)
 #
 # Spaces: default (Mysten open testnet servers, 2-of-2), committee (Mysten testnet committee,
-# 3-of-5 behind the Mysten aggregator) and a custom 1-of-2 threshold.
+# 3-of-5 behind the Mysten aggregator) and a custom 1-of-2 threshold; then a space created by
+# the Python lane, with entries crossing the two lanes in both directions.
 set -eu
 ROOT=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
 PY=${MNEMOS_PYTHON:-python3}
