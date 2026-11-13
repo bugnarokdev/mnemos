@@ -1,0 +1,9 @@
+// Negative compile test (BETA). Must NOT compile: `DeliveryReceipt` is `key` without
+// `store`, so no module other than mnemos_board::board can transfer it.
+module mnemos_board::negative_receipt;
+
+use mnemos_board::board::DeliveryReceipt;
+
+public fun resell(receipt: DeliveryReceipt, to: address) {
+    transfer::public_transfer(receipt, to);
+}

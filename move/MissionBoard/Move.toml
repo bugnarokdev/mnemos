@@ -1,0 +1,11 @@
+[package]
+name = "mnemos_mission_board"
+edition = "2024"
+license = "MIT"
+
+# BETA (testnet preview). Not published: phase P1 of docs/fr/design-mission-board.md
+# builds and tests this package locally only. Depends on the implicit Sui framework
+# and Move stdlib, nothing else (no allowlist: access control is board-specific).
+
+[addresses]
+mnemos_board = "0x0"
