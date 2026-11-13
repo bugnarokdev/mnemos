@@ -12,6 +12,10 @@
 #   MNEMOS_PACKAGE_ID  MemoryIndex package (default: the 0.2.3 test package)
 #   MNEMOS_PYTHON      interpreter with mnemos_core installed (default python3)
 #   E2E_WORK, E2E_REPORT
+#   E2E_LEGACY_REPORT  record of an earlier run: A re-reads that run's space (no gas)
+#
+# Spaces: default (Mysten open testnet servers, 2-of-2), committee (Mysten testnet committee,
+# 3-of-5 behind the Mysten aggregator) and a custom 1-of-2 threshold.
 set -eu
 ROOT=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
 PY=${MNEMOS_PYTHON:-python3}
