@@ -20,7 +20,7 @@ mémoire, sans mot de passe commun :
 2. A ajoute l'adresse Sui de B à l'allowlist.
 3. A (ou tout membre) publie des entrées. Chaque entrée est chiffrée avec
    [Seal](https://github.com/MystenLabs/seal) via
-   [`sui-seal-client`](https://github.com/bugnarokdev/sui-seal-client), stockée sur
+   [`sui-seal-client`](https://github.com/bugnarokdev/sui-seal-client) v0.2.0 (BETA), stockée sur
    Walrus, et référencée dans le Space (id du blob, id de clé, epoch, auteur, sha256 du
    blob).
 4. B récupère : les serveurs de clés Seal vérifient `allowlist::seal_approve` on-chain et
@@ -36,10 +36,14 @@ mémoire, sans mot de passe commun :
 | Package Space `mnemos_share::space` (`move/SharedSpace`) | `0xa40e74c6ae866f18e86e9dcdfc9d29af436597264991fc81b4a289519f3500d1` |
 | UpgradeCap du package Space (détenu par l'adresse propriétaire `0xa0ea…8c06`) | `0x27a9d878f827ca3693cb5fdc963ce7d87897ffc742de8b0183f8a6040f6f1b96` |
 | Transaction de publication du package Space | `Bwx3yVdYci6XQXMXecpt3eYHCyvZr46maSQuyZfSbddM` |
-| Serveurs de clés Seal | `mysten-testnet-1`, `mysten-testnet-2`, seuil 2 sur 2 |
+| Serveurs de clés Seal (par défaut) | `mysten-testnet-1`, `mysten-testnet-2`, seuil 2 sur 2 |
+| Serveurs de clés Seal (`--committee`, BETA) | Comité testnet de Mysten `0xb012378c9f3799fb5b1a7083da74a4069e3c3f1c93de0b27212a5799ce1e1e98`, 3 sur 5 derrière `https://seal-aggregator-testnet.mystenlabs.com` |
 
-`move/SharedSpace` dépend de l'allowlist par commit git (`sui-seal-client` `f4ffa2f`), et
-le package publié est lié à `0xe10f…7f1b` version 1.
+Le cœur natif fige `sui-seal-client` par commit sur le tag `v0.2.0`
+(`da579f64223ff3f7a83897272937cfc4d2d55153`). `move/SharedSpace` dépend toujours de
+l'allowlist à `f4ffa2f`, le commit à partir duquel le package Space a été compilé et
+publié ; les sources Move de l'allowlist sont identiques octet pour octet dans `v0.2.0`.
+Le package publié est lié à `0xe10f…7f1b` version 1.
 
 Le Space n'accepte une référence que si :
 
@@ -68,6 +72,41 @@ id, pour toujours. Donc :
 Le retrait protège l'avenir, pas le passé. Une entrée qui doit rester secrète pour un
 membre retiré n'aurait pas dû lui être partagée.
 
+## Serveurs de clés (BETA)
+
+Chaque espace choisit les serveurs de clés vers lesquels ses entrées sont chiffrées. Le
+choix se fait au `create` (ou au `join`) et est enregistré avec l'espace dans
+`<HERMES_HOME>/mnemos/share.json` (`spaces.<nom>.seal`) ; `push` l'utilise sans option.
+
+| Option | Serveurs de clés | Seuil |
+| --- | --- | --- |
+| aucune (par défaut) | `mysten-testnet-1`, `mysten-testnet-2` | 2 sur 2, comme dans la première preview |
+| `--committee` | Comité testnet de Mysten, joint via l'agrégateur de Mysten | 1 (le comité lui-même est en 3 sur 5) |
+| `--threshold N` | les serveurs par défaut | N |
+| `--key-server ID [--key-server ID…] [--threshold N]` | les objets serveurs de clés listés | N (2 par défaut) |
+
+Les lecteurs n'ont besoin d'aucune option : `pull` lit les serveurs de clés et le seuil
+dans l'en-tête chiffré de chaque entrée, puis interroge ces serveurs. Il ne contacte que
+des serveurs de confiance : les serveurs et le comité testnet de Mysten, plus ceux listés
+dans les réglages du profil. Une entrée qui nomme un autre serveur, ou un jeu de serveurs
+pondérés, est marquée `error` sans aucune requête.
+
+Les espaces créés avant ce changement n'ont pas de réglage `seal` et gardent le 2 sur 2
+par défaut ; leurs entrées se déchiffrent toujours (le test coop de bout en bout relit un
+espace écrit par la version précédente du client).
+
+Les réglages pour tout le profil vont dans `share.json` sous `config` :
+`key_server_profile` (`testnet` ou `committee`), `key_servers`, `threshold`, et
+`aggregators` (`{"<id du serveur comité>": "https://…"}`) pour d'autres comités que celui
+de Mysten. Les réglages sont validés avant toute transaction ; un seuil impossible est
+refusé avec `share settings: …`.
+
+**Mauvais propriétaire.** Si les serveurs de clés répondent que l'approbation a utilisé
+un objet appartenant à une autre adresse (`Error::is_wrong_owner` dans sui-seal-client),
+`pull` marque les entrées `wrong_owner`, ne réessaie pas et sort avec le code 4. Les
+espaces à allowlist n'utilisent que l'objet allowlist partagé, donc ce cas ne devrait pas
+arriver ; il signalerait un mauvais id d'espace ou d'allowlist.
+
 ## Commandes
 
 Compiler le cœur natif avec la feature :
@@ -82,13 +121,13 @@ Les commandes sont sous `hermes mnemos-sui share`. Le même code tourne hors de 
 | Commande | Qui | Effet |
 | --- | --- | --- |
 | `share whoami` | tous | Affiche l'adresse du signataire |
-| `share create [--name N]` | créateur | Allowlist + Space, le créateur est membre et détient le Cap |
-| `share join --space <id> [--name N]` | membre | Enregistre localement l'espace de quelqu'un d'autre |
+| `share create [--name N] [--committee \| --key-server ID… ] [--threshold N]` | créateur | Allowlist + Space, le créateur est membre et détient le Cap ; serveurs de clés comme ci-dessus |
+| `share join --space <id> [--name N] [options serveurs]` | membre | Enregistre localement l'espace de quelqu'un d'autre (options utiles seulement pour publier) |
 | `share add <adresse>` | créateur | Ajoute un membre (epoch inchangé) |
 | `share remove <adresse>` | créateur | Retire un membre, epoch + 1 |
 | `share push --text T [--text T…]` | membre | Chiffre, envoie, publie |
 | `share push --from-memory REQUÊTE [--limit N]` | membre | Partage les entrées personnelles qui correspondent (lecture seule) |
-| `share pull` | membre | Obtient les clés, déchiffre, met en cache ; code de sortie 3 si une entrée est refusée |
+| `share pull` | membre | Obtient les clés, déchiffre, met en cache ; code de sortie 3 si une entrée est refusée, 4 en cas de `wrong_owner` |
 | `share status` | tous | Epoch, nombre d'entrées par epoch |
 
 **Signataire.** `MNEMOS_SHARE_KEY_FILE` (ou `--key-file`) désigne un fichier de clé Sui
@@ -113,9 +152,13 @@ chemin personnel. Une transaction qui échoue on-chain est remontée comme une e
 - Le Space garde les références dans un vecteur à l'intérieur d'un seul objet (limite de
   taille d'objet Sui, de l'ordre de quelques milliers d'entrées).
 - Seul le créateur détient le Cap ; il n'y a pas de commande de transfert d'admin.
-- Les serveurs de clés testnet ouverts de Mysten sont gratuits, limités en débit et sans
-  garantie de disponibilité. Les serveurs en comité (agrégateur) ne sont pas encore pris
-  en charge.
+- Les serveurs de clés testnet ouverts et le comité de Mysten sont gratuits, limités en
+  débit et sans garantie de disponibilité. Il n'y a pas de bascule automatique entre
+  jeux de serveurs : un espace garde les serveurs choisis à sa création ; un seuil plus
+  bas (par exemple 1 sur 2) tolère un serveur en panne, au prix de faire confiance à un
+  seul serveur.
+- Les serveurs pondérés et les clés d'API (serveurs à permission), disponibles dans
+  sui-seal-client v0.2.0, ne sont pas exposés ici.
 - Les crates `seal-sdk` et `crypto` sont des dépendances git figées par commit : cette
   feature ne peut pas encore être publiée sur crates.io.
 
@@ -124,24 +167,30 @@ chemin personnel. Une transaction qui échoue on-chain est remontée comme une e
 Cette feuille de route est seulement indicative : aucune date, aucun engagement, et
 l'ordre peut changer.
 
-1. **v0.1 beta (cette branche) :** partage coopératif par allowlist sur testnet.
-2. **Serveurs de clés :** serveurs en comité (agrégateur), choix des serveurs et du seuil,
-   avec bascule si l'un tombe.
-3. **D'autres règles d'accès :** abonnement, accès à durée limitée.
-4. **Bindings Python** pour sui-seal-client, pour que le backend Python puisse aussi
-   partager.
+1. **v0.1 beta :** partage coopératif par allowlist sur testnet.
+2. **Serveurs de clés (cette branche, BETA, sur sui-seal-client v0.2.0) :** comité
+   testnet de Mysten via l'agrégateur, choix des serveurs et du seuil, lecture guidée par
+   l'en-tête. Ensuite : bascule entre jeux de serveurs, serveurs à permission.
+3. **D'autres règles d'accès :** l'abonnement et l'accès à durée limitée existent dans
+   sui-seal-client v0.2.0 ; les brancher sur les espaces vient ensuite.
+4. **Partage depuis le backend Python** via les bindings Python de sui-seal-client
+   v0.2.0.
 5. **Publication sur crates.io** quand Mysten publiera `seal-sdk` et `crypto`.
 6. **Revue de sécurité** de la voie et des packages Move.
 7. **Puis mainnet**, seulement après la revue.
 
 ## Tests
 
-- `cargo test --release --features seal` : les 8 tests existants et 4 pour cette voie
-  (format de l'id de clé, validation de la config, lecture du Space, format des entrées).
+- `cargo test --release --features seal` : les 8 tests existants et 8 pour cette voie
+  (format de l'id de clé, validation de la config, profils de serveurs, réglages
+  refusés, jeux de serveurs des en-têtes, classement des erreurs dont le mauvais
+  propriétaire, lecture du Space, format des entrées).
 - `move/SharedSpace` : 7 tests Move (`sui move test`).
-- `tests/test_share.py` : 9 tests hors ligne (refus sur le backend Python, isolation de
-  la config, cache, branchement CLI, dérivation du signataire, fichier de clé jamais
-  affiché).
-- `scripts/e2e_coop.sh` : le scénario testnet ci-dessus, avec le MemoryIndex personnel de
-  A créé, restauré et vérifié autour. Voir le
+- `tests/test_share.py` : 13 tests hors ligne (refus sur le backend Python, isolation de
+  la config, cache, branchement CLI, options de serveurs et réglages par espace,
+  réglages refusés avant toute transaction, dérivation du signataire, fichier de clé
+  jamais affiché).
+- `scripts/e2e_coop.sh` : le scénario testnet ci-dessus, un espace sur le comité, un
+  espace en 1 sur 2, une relecture de l'espace d'un run précédent, avec le MemoryIndex
+  personnel de A créé, restauré et vérifié autour. Voir le
   [rapport de tests de la preview](test-report-preview-seal.md).

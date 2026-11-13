@@ -39,8 +39,8 @@ sui-transaction-builder = "0.4"
 prost-types = "0.14"
 tonic = { version = "0.14", default-features = false }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"] }
-# Seal client, pinned by commit (bugnarokdev/sui-seal-client main, v0.1 + owner republish).
-sui-seal-client = { git = "https://github.com/bugnarokdev/sui-seal-client", rev = "f4ffa2f268fda2838633a08046ef4af8fc717e02", optional = true }
+# Seal client, pinned by commit: bugnarokdev/sui-seal-client tag v0.2.0 (BETA).
+sui-seal-client = { git = "https://github.com/bugnarokdev/sui-seal-client", rev = "da579f64223ff3f7a83897272937cfc4d2d55153", optional = true }
 
 [profile.release]
 lto = false

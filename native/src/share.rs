@@ -6,11 +6,18 @@
 //! and referenced from the Space. Removing a member bumps the allowlist epoch, so new
 //! entries use ids the removed member never obtained a key for.
 //!
+//! Key servers are configurable per space (BETA): the Mysten open testnet servers
+//! (default, 2-of-2, as in the first preview), the Mysten testnet committee (3-of-5 behind
+//! the Mysten aggregator, seen as one server) or an explicit list with a threshold.
+//! Readers do not need to know which: `pull` reads the key servers and the threshold from
+//! each entry's encrypted header and only contacts servers it trusts.
+//!
 //! This module is separate from the personal memory path: it does not read or write the
 //! MemoryIndex, the local store, or the keys derived from `MNEMOS_SECRET` for
 //! encryption. It only reuses the transport helpers (Walrus, fullnode reads, the
 //! testnet guard).
 
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::str::FromStr;
 use std::sync::Mutex;
 use std::time::Duration;
@@ -22,7 +29,10 @@ use sui_crypto::ed25519::Ed25519PrivateKey;
 use sui_crypto::SuiSigner;
 use sui_rpc::field::{FieldMask, FieldMaskUtil};
 use sui_sdk_types::{Address, Identifier};
-use sui_seal_client::{ApprovalArg, ApprovalTx, DerivedKeys, SealClient, SealConfig, SessionKey};
+use sui_seal_client::{
+    ApprovalArg, ApprovalTx, DerivedKeys, SealClient, SealConfig, SessionKey, MYSTEN_TESTNET_1, MYSTEN_TESTNET_2,
+    MYSTEN_TESTNET_AGGREGATOR, MYSTEN_TESTNET_COMMITTEE,
+};
 use sui_transaction_builder::{Function, ObjectInput, TransactionBuilder};
 
 use crate::engine::{self, Config};
@@ -38,15 +48,31 @@ pub const ENTRY_FORMAT: &str = "mnemos-share-entry-v1";
 const SESSION_TTL_MIN: u16 = 10;
 const GAS_BUDGET: u64 = 50_000_000;
 
+/// Key server profile of the first preview: Mysten open testnet servers, 2-of-2.
+pub const PROFILE_TESTNET: &str = "testnet";
+/// Mysten testnet committee (3-of-5 behind the Mysten aggregator), threshold 1. BETA.
+pub const PROFILE_COMMITTEE: &str = "committee";
+
 #[derive(Clone, Debug)]
 pub struct ShareConfig {
     pub seal_package: Address,
     pub space_package: Address,
+    /// `testnet` or `committee`: where `key_servers` and `threshold` default from.
+    pub profile: String,
+    /// Key servers new entries are encrypted to, in share order.
     pub key_servers: Vec<Address>,
+    /// Number of `key_servers` needed to decrypt.
     pub threshold: u8,
+    /// Aggregator URL of each committee key server. The Mysten testnet committee is
+    /// always known; other committees must be listed here.
+    pub aggregators: BTreeMap<Address, String>,
 }
 
 impl ShareConfig {
+    /// Reads the share settings from the config JSON:
+    /// `seal_package`, `space_package`, `key_server_profile` (`testnet` | `committee`),
+    /// `key_servers` (list of key server object ids), `threshold`, `aggregators`
+    /// (`{key server id: https URL}`). Missing keys keep the first preview's behaviour.
     pub fn from_json(raw: &str) -> Result<Self> {
         let value: Value = serde_json::from_str(raw).unwrap_or(Value::Null);
         let text = |key: &str, default: &str| -> String {
@@ -55,24 +81,134 @@ impl ShareConfig {
         let seal_package = Address::from_str(&text("seal_package", DEFAULT_SEAL_PACKAGE)).context("seal_package")?;
         let space_package =
             Address::from_str(&text("space_package", DEFAULT_SPACE_PACKAGE)).context("space_package")?;
-        let defaults = SealConfig::testnet();
-        let key_servers = match value.get("key_servers").and_then(Value::as_array) {
-            Some(items) if !items.is_empty() => items
+        let profile = text("key_server_profile", PROFILE_TESTNET);
+        let (profile_servers, profile_threshold) = match profile.as_str() {
+            PROFILE_TESTNET => {
+                let preset = SealConfig::testnet();
+                (preset.key_servers, preset.threshold)
+            }
+            PROFILE_COMMITTEE => (vec![committee_id()], 1),
+            other => {
+                return Err(anyhow!(
+                    "key_server_profile {other:?}: expected {PROFILE_TESTNET:?} or {PROFILE_COMMITTEE:?}"
+                ))
+            }
+        };
+        let key_servers = match value.get("key_servers") {
+            None | Some(Value::Null) => profile_servers,
+            Some(Value::Array(items)) if !items.is_empty() => items
                 .iter()
                 .map(|item| Address::from_str(item.as_str().unwrap_or("")).context("key_servers"))
                 .collect::<Result<Vec<_>>>()?,
-            _ => defaults.key_servers.clone(),
+            Some(_) => return Err(anyhow!("key_servers must be a non-empty list of key server object ids")),
         };
-        let threshold = value
-            .get("threshold")
-            .and_then(Value::as_u64)
-            .map(|item| u8::try_from(item).map_err(|_| anyhow!("threshold out of range")))
-            .transpose()?
-            .unwrap_or(defaults.threshold);
+        let distinct: BTreeSet<&Address> = key_servers.iter().collect();
+        if distinct.len() != key_servers.len() {
+            return Err(anyhow!("key_servers lists the same server twice (weighted servers are not supported)"));
+        }
+        let threshold = match value.get("threshold") {
+            None | Some(Value::Null) => profile_threshold,
+            Some(item) => {
+                let raw = item.as_u64().ok_or_else(|| anyhow!("threshold must be a positive integer"))?;
+                u8::try_from(raw).map_err(|_| anyhow!("threshold out of range"))?
+            }
+        };
         if threshold == 0 || threshold as usize > key_servers.len() {
             return Err(anyhow!("threshold {threshold} must be between 1 and {}", key_servers.len()));
         }
-        Ok(Self { seal_package, space_package, key_servers, threshold })
+        let mut aggregators = BTreeMap::from([(committee_id(), MYSTEN_TESTNET_AGGREGATOR.to_string())]);
+        match value.get("aggregators") {
+            None | Some(Value::Null) => {}
+            Some(Value::Object(items)) => {
+                for (id, url) in items {
+                    let id = Address::from_str(id).context("aggregators: key server id")?;
+                    let url = url.as_str().ok_or_else(|| anyhow!("aggregators: URL of {id} must be a string"))?;
+                    if !url.starts_with("https://") || url.len() <= "https://".len() {
+                        return Err(anyhow!("aggregators: URL of {id} must start with https://"));
+                    }
+                    aggregators.insert(id, url.trim_end_matches('/').to_string());
+                }
+            }
+            Some(_) => return Err(anyhow!("aggregators must be an object {{key server id: https URL}}")),
+        }
+        Ok(Self { seal_package, space_package, profile, key_servers, threshold, aggregators })
+    }
+
+    /// Key servers `pull` accepts in an entry header: the configured ones, the Mysten
+    /// testnet servers and committee, and the committees listed in `aggregators`.
+    pub fn trusted_servers(&self) -> BTreeSet<Address> {
+        let mut trusted: BTreeSet<Address> = self.key_servers.iter().copied().collect();
+        trusted.extend(self.aggregators.keys().copied());
+        for known in [MYSTEN_TESTNET_1, MYSTEN_TESTNET_2, MYSTEN_TESTNET_COMMITTEE] {
+            trusted.insert(Address::from_str(known).expect("valid constant"));
+        }
+        trusted
+    }
+
+    /// The key server settings, as reported by `create`, `push` and `status`.
+    pub fn seal_json(&self) -> Value {
+        json!({
+            "key_server_profile": self.profile,
+            "key_servers": self.key_servers.iter().map(Address::to_string).collect::<Vec<_>>(),
+            "threshold": self.threshold,
+        })
+    }
+}
+
+fn committee_id() -> Address {
+    Address::from_str(MYSTEN_TESTNET_COMMITTEE).expect("valid constant")
+}
+
+/// Key servers and threshold of one encrypted entry, from its public header.
+#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct ServerSet {
+    pub servers: Vec<Address>,
+    pub threshold: u8,
+}
+
+impl ServerSet {
+    /// Checks a header's server set against the trusted servers. Weighted sets (a server
+    /// listed several times) are refused: this preview never writes them.
+    pub fn from_header(servers: &[Address], threshold: u8, trusted: &BTreeSet<Address>) -> Result<Self> {
+        let distinct: BTreeSet<&Address> = servers.iter().collect();
+        if distinct.len() != servers.len() {
+            return Err(anyhow!("weighted key servers are not supported by this preview"));
+        }
+        if threshold == 0 || threshold as usize > servers.len() {
+            return Err(anyhow!("header threshold {threshold} is not between 1 and {}", servers.len()));
+        }
+        if let Some(unknown) = servers.iter().find(|id| !trusted.contains(id)) {
+            return Err(anyhow!("untrusted key server {unknown} (add it to key_servers or aggregators to accept it)"));
+        }
+        Ok(Self { servers: servers.to_vec(), threshold })
+    }
+
+    fn to_json(&self) -> Value {
+        json!({
+            "key_servers": self.servers.iter().map(Address::to_string).collect::<Vec<_>>(),
+            "threshold": self.threshold,
+        })
+    }
+}
+
+/// How a failed key request is reported.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FetchFailure {
+    /// The approval used an owned object that the reader does not own (`wrong_owner`).
+    WrongOwner,
+    /// `seal_approve` refused (`no_access`).
+    NoAccess,
+    /// Anything else: transport, threshold not reached for other reasons... (fatal).
+    Other,
+}
+
+pub fn classify_fetch_error(err: &sui_seal_client::Error) -> FetchFailure {
+    if err.is_wrong_owner() {
+        FetchFailure::WrongOwner
+    } else if err.is_no_access() {
+        FetchFailure::NoAccess
+    } else {
+        FetchFailure::Other
     }
 }
 
@@ -164,7 +300,7 @@ pub struct Share {
     signer: Ed25519PrivateKey,
     address: Address,
     runtime: tokio::runtime::Runtime,
-    client: Mutex<Option<SealClient>>,
+    clients: Mutex<HashMap<ServerSet, SealClient>>,
     session: Mutex<Option<SessionKey>>,
     keys: Mutex<DerivedKeys>,
 }
@@ -190,7 +326,7 @@ impl Share {
             signer,
             address,
             runtime,
-            client: Mutex::new(None),
+            clients: Mutex::new(HashMap::new()),
             session: Mutex::new(None),
             keys: Mutex::new(DerivedKeys::default()),
         })
@@ -200,22 +336,31 @@ impl Share {
         self.address.to_string()
     }
 
-    fn seal_client(&self) -> Result<SealClient> {
-        let mut slot = self.client.lock().unwrap_or_else(|err| err.into_inner());
-        if let Some(client) = slot.as_ref() {
+    /// Seal client for one server set, connected once and reused.
+    fn seal_client(&self, set: &ServerSet) -> Result<SealClient> {
+        let mut slot = self.clients.lock().unwrap_or_else(|err| err.into_inner());
+        if let Some(client) = slot.get(set) {
             return Ok(client.clone());
         }
-        let mut config = SealConfig::testnet();
-        config.key_servers = self.share.key_servers.clone();
-        config.threshold = self.share.threshold;
-        config.fullnode_url = self.cfg.sui_rpc.clone();
+        let mut builder = SealConfig::builder().threshold(set.threshold).fullnode_url(self.cfg.sui_rpc.clone());
+        for id in &set.servers {
+            builder = match self.share.aggregators.get(id) {
+                Some(url) => builder.committee(*id, url.clone()),
+                None => builder.key_server(*id),
+            };
+        }
+        let config = builder.build().map_err(|err| anyhow!("seal config: {err}"))?;
         let rpc = self.cfg.sui_rpc.clone();
         let client = self.runtime.block_on(async move {
             engine::check_rpc(&rpc).await?;
             SealClient::connect(config).await.map_err(|err| anyhow!("seal: {err}"))
         })?;
-        *slot = Some(client.clone());
+        slot.insert(set.clone(), client.clone());
         Ok(client)
+    }
+
+    fn write_set(&self) -> ServerSet {
+        ServerSet { servers: self.share.key_servers.clone(), threshold: self.share.threshold }
     }
 
     fn list_epoch(&self, list: &Address) -> Result<u64> {
@@ -278,6 +423,7 @@ impl Share {
             "digest": digest,
             "seal_package": self.share.seal_package.to_string(),
             "space_package": self.share.space_package.to_string(),
+            "seal": self.share.seal_json(),
         }))
     }
 
@@ -342,7 +488,7 @@ impl Share {
         let state = self.space(space)?;
         let list = Address::from_str(&state.list_id)?;
         let epoch = self.list_epoch(&list)?;
-        let client = self.seal_client()?;
+        let client = self.seal_client(&self.write_set())?;
         let mut prepared = Vec::new();
         for item in &items {
             let text = item["text"].as_str().ok_or_else(|| anyhow!("entry without text"))?;
@@ -393,7 +539,7 @@ impl Share {
             }
             std::thread::sleep(Duration::from_secs(1));
         }
-        Ok(json!({"digest": digest, "epoch": epoch, "entries": published}))
+        Ok(json!({"digest": digest, "epoch": epoch, "entries": published, "seal": self.share.seal_json()}))
     }
 
     fn fetch(
@@ -417,13 +563,16 @@ impl Share {
     }
 
     /// Reads every entry of the space. Keys already held in memory are reused; missing
-    /// keys are requested from the key servers (`fetch = true`) or reported as
-    /// `no_cached_key` (`fetch = false`, offline check of what was fetched before).
+    /// keys are requested from the key servers named in each entry's header (`fetch =
+    /// true`) or reported as `no_cached_key` (`fetch = false`, offline check of what was
+    /// fetched before). Entries whose header names an untrusted or weighted server set are
+    /// reported as `error` without contacting anyone.
     pub fn pull(&self, space: &str, fetch: bool) -> Result<Value> {
         let state = self.space(space)?;
         let list = Address::from_str(&state.list_id)?;
-        let client = self.seal_client()?;
+        let trusted = self.share.trusted_servers();
         let mut blobs = Vec::new();
+        let mut sets: Vec<std::result::Result<ServerSet, String>> = Vec::new();
         for entry in &state.entries {
             let blob = self.runtime.block_on(engine::walrus_get(&self.cfg.walrus_aggregator, &entry.blob_id))?;
             let digest: [u8; 32] = Sha256::digest(&blob).into();
@@ -435,46 +584,75 @@ impl Share {
             if info.package_id != self.share.seal_package || info.id != entry.key_id {
                 return Err(anyhow!("entry {}: ciphertext header does not match the published key id", entry.index));
             }
+            sets.push(
+                ServerSet::from_header(&info.key_servers, info.threshold, &trusted).map_err(|err| err.to_string()),
+            );
             blobs.push(blob);
         }
+        let groups: BTreeSet<ServerSet> = sets.iter().filter_map(|set| set.as_ref().ok().cloned()).collect();
+        let mut clients: HashMap<ServerSet, SealClient> = HashMap::new();
+        for set in &groups {
+            clients.insert(set.clone(), self.seal_client(set)?);
+        }
         let mut refused: Vec<usize> = Vec::new();
+        let mut wrong_owner: Vec<usize> = Vec::new();
         let mut errors: Vec<(usize, String)> = Vec::new();
-        if fetch {
-            let missing: Vec<usize> = {
-                let keys = self.keys.lock().unwrap_or_else(|err| err.into_inner());
-                state
-                    .entries
-                    .iter()
-                    .filter(|entry| {
-                        keys.servers_for(&self.share.seal_package, &entry.key_id) < client.threshold() as usize
-                    })
-                    .map(|entry| entry.index)
-                    .collect()
-            };
-            if !missing.is_empty() {
-                let list_arg =
-                    self.runtime.block_on(client.shared_object(list)).map_err(|err| anyhow!("allowlist: {err}"))?;
+        if fetch && !groups.is_empty() {
+            let mut list_arg: Option<ApprovalArg> = None;
+            for set in &groups {
+                let client = &clients[set];
+                let missing: Vec<usize> = {
+                    let keys = self.keys.lock().unwrap_or_else(|err| err.into_inner());
+                    state
+                        .entries
+                        .iter()
+                        .zip(&sets)
+                        .filter(|(_, entry_set)| entry_set.as_ref().ok() == Some(set))
+                        .filter(|(entry, _)| {
+                            keys.servers_for(&self.share.seal_package, &entry.key_id) < set.threshold as usize
+                        })
+                        .map(|(entry, _)| entry.index)
+                        .collect()
+                };
+                if missing.is_empty() {
+                    continue;
+                }
+                if list_arg.is_none() {
+                    list_arg = Some(
+                        self.runtime.block_on(client.shared_object(list)).map_err(|err| anyhow!("allowlist: {err}"))?,
+                    );
+                }
+                let list_arg = list_arg.as_ref().expect("set above");
                 let ids: Vec<Vec<u8>> = missing.iter().map(|i| state.entries[*i].key_id.clone()).collect();
-                match self.fetch(&client, &list_arg, &ids) {
+                match self.fetch(client, list_arg, &ids) {
                     Ok(fetched) => self.keys.lock().unwrap_or_else(|err| err.into_inner()).extend(fetched),
-                    Err(err) if err.is_no_access() => {
-                        // Classify entry by entry: some ids may be approvable, others not.
-                        for index in &missing {
-                            match self.fetch(&client, &list_arg, std::slice::from_ref(&state.entries[*index].key_id)) {
-                                Ok(fetched) => self.keys.lock().unwrap_or_else(|err| err.into_inner()).extend(fetched),
-                                Err(err) if err.is_no_access() => refused.push(*index),
-                                Err(err) => errors.push((*index, err.to_string())),
+                    Err(err) => match classify_fetch_error(&err) {
+                        FetchFailure::WrongOwner => wrong_owner.extend(&missing),
+                        FetchFailure::NoAccess => {
+                            // Classify entry by entry: some ids may be approvable, others not.
+                            for index in &missing {
+                                match self.fetch(client, list_arg, std::slice::from_ref(&state.entries[*index].key_id))
+                                {
+                                    Ok(fetched) => {
+                                        self.keys.lock().unwrap_or_else(|err| err.into_inner()).extend(fetched)
+                                    }
+                                    Err(err) => match classify_fetch_error(&err) {
+                                        FetchFailure::NoAccess => refused.push(*index),
+                                        FetchFailure::WrongOwner => wrong_owner.push(*index),
+                                        FetchFailure::Other => errors.push((*index, err.to_string())),
+                                    },
+                                }
                             }
                         }
-                    }
-                    Err(err) => return Err(anyhow!("fetch keys: {err}")),
+                        FetchFailure::Other => return Err(anyhow!("fetch keys: {err}")),
+                    },
                 }
             }
         }
         let keys = self.keys.lock().unwrap_or_else(|err| err.into_inner());
         let mut out = Vec::new();
-        let mut counts = json!({"ok": 0, "no_access": 0, "no_cached_key": 0, "error": 0});
-        for (entry, blob) in state.entries.iter().zip(&blobs) {
+        let mut counts = json!({"ok": 0, "no_access": 0, "wrong_owner": 0, "no_cached_key": 0, "error": 0});
+        for ((entry, blob), set) in state.entries.iter().zip(&blobs).zip(&sets) {
             let mut row = json!({
                 "index": entry.index,
                 "epoch": entry.epoch,
@@ -482,35 +660,50 @@ impl Share {
                 "blob_id": entry.blob_id,
                 "key_id": hex::encode(&entry.key_id),
             });
-            let status = if refused.contains(&entry.index) {
-                "no_access"
-            } else if let Some((_, message)) = errors.iter().find(|(index, _)| *index == entry.index) {
-                row["error"] = json!(message);
-                "error"
-            } else if keys.servers_for(&self.share.seal_package, &entry.key_id) < client.threshold() as usize {
-                "no_cached_key"
-            } else {
-                match client
-                    .decrypt(blob, &keys)
-                    .map_err(|err| anyhow!("{err}"))
-                    .and_then(|plain| parse_entry_plaintext(&plain))
-                {
-                    Ok(value) => {
-                        row["text"] = value["text"].clone();
-                        row["kind"] = value["kind"].clone();
-                        row["ts"] = value["ts"].clone();
-                        if value["author"].as_str().map(engine::norm_address).transpose()?.as_deref()
-                            != Some(entry.author.as_str())
-                        {
-                            row["error"] = json!("author in plaintext does not match the publisher");
-                            "error"
-                        } else {
-                            "ok"
-                        }
-                    }
-                    Err(err) => {
-                        row["error"] = json!(err.to_string());
+            let status = match set {
+                Err(message) => {
+                    row["error"] = json!(message);
+                    "error"
+                }
+                Ok(set) => {
+                    row["seal"] = set.to_json();
+                    if refused.contains(&entry.index) {
+                        "no_access"
+                    } else if wrong_owner.contains(&entry.index) {
+                        row["error"] = json!(
+                            "the key request used an object owned by another address; check the space and allowlist ids"
+                        );
+                        "wrong_owner"
+                    } else if let Some((_, message)) = errors.iter().find(|(index, _)| *index == entry.index) {
+                        row["error"] = json!(message);
                         "error"
+                    } else if keys.servers_for(&self.share.seal_package, &entry.key_id) < set.threshold as usize {
+                        "no_cached_key"
+                    } else {
+                        let client = &clients[set];
+                        match client
+                            .decrypt(blob, &keys)
+                            .map_err(|err| anyhow!("{err}"))
+                            .and_then(|plain| parse_entry_plaintext(&plain))
+                        {
+                            Ok(value) => {
+                                row["text"] = value["text"].clone();
+                                row["kind"] = value["kind"].clone();
+                                row["ts"] = value["ts"].clone();
+                                if value["author"].as_str().map(engine::norm_address).transpose()?.as_deref()
+                                    != Some(entry.author.as_str())
+                                {
+                                    row["error"] = json!("author in plaintext does not match the publisher");
+                                    "error"
+                                } else {
+                                    "ok"
+                                }
+                            }
+                            Err(err) => {
+                                row["error"] = json!(err.to_string());
+                                "error"
+                            }
+                        }
                     }
                 }
             };
@@ -543,6 +736,7 @@ impl Share {
             "entries": state.entries.len(),
             "entries_per_epoch": per_epoch,
             "address": self.address(),
+            "seal": self.share.seal_json(),
         }))
     }
 }
@@ -621,6 +815,102 @@ mod tests {
         assert!(ShareConfig::from_json(r#"{"threshold": 3}"#).is_err());
         assert!(ShareConfig::from_json(r#"{"threshold": 0}"#).is_err());
         assert!(ShareConfig::from_json(r#"{"seal_package": "0xzz"}"#).is_err());
+    }
+
+    fn addr(raw: &str) -> Address {
+        Address::from_str(raw).unwrap()
+    }
+
+    #[test]
+    fn share_config_profiles_and_custom_servers() {
+        // Default: the first preview's 2-of-2 on the Mysten open testnet servers.
+        let cfg = ShareConfig::from_json("{}").unwrap();
+        assert_eq!(cfg.profile, PROFILE_TESTNET);
+        assert_eq!(cfg.key_servers, vec![addr(MYSTEN_TESTNET_1), addr(MYSTEN_TESTNET_2)]);
+        assert_eq!(cfg.threshold, 2);
+        assert_eq!(cfg.aggregators.get(&addr(MYSTEN_TESTNET_COMMITTEE)).unwrap(), MYSTEN_TESTNET_AGGREGATOR);
+        // Committee: one server (3-of-5 inside), threshold 1.
+        let cfg = ShareConfig::from_json(r#"{"key_server_profile": "committee"}"#).unwrap();
+        assert_eq!(cfg.key_servers, vec![addr(MYSTEN_TESTNET_COMMITTEE)]);
+        assert_eq!(cfg.threshold, 1);
+        assert_eq!(cfg.seal_json()["key_server_profile"], "committee");
+        // Custom threshold on the default servers.
+        let cfg = ShareConfig::from_json(r#"{"threshold": 1}"#).unwrap();
+        assert_eq!((cfg.key_servers.len(), cfg.threshold), (2, 1));
+        // Explicit list, hybrid committee + open server.
+        let raw = json!({"key_servers": [MYSTEN_TESTNET_COMMITTEE, MYSTEN_TESTNET_1], "threshold": 2}).to_string();
+        let cfg = ShareConfig::from_json(&raw).unwrap();
+        assert_eq!(cfg.key_servers, vec![addr(MYSTEN_TESTNET_COMMITTEE), addr(MYSTEN_TESTNET_1)]);
+        // Null values keep the defaults (backward compatible share.json).
+        let cfg = ShareConfig::from_json(r#"{"key_servers": null, "threshold": null}"#).unwrap();
+        assert_eq!((cfg.key_servers.len(), cfg.threshold), (2, 2));
+    }
+
+    #[test]
+    fn share_config_refuses_bad_settings() {
+        for bad in [
+            r#"{"key_server_profile": "mainnet"}"#,
+            r#"{"key_server_profile": "committee", "threshold": 2}"#,
+            r#"{"key_servers": []}"#,
+            r#"{"key_servers": "0x1"}"#,
+            r#"{"key_servers": ["0x1", "0x1"]}"#,
+            r#"{"key_servers": ["0xzz"]}"#,
+            r#"{"threshold": "2"}"#,
+            r#"{"threshold": -1}"#,
+            r#"{"threshold": 256}"#,
+            r#"{"aggregators": {"0x1": "http://plain.example"}}"#,
+            r#"{"aggregators": {"0x1": 3}}"#,
+            r#"{"aggregators": ["https://a.example"]}"#,
+            r#"{"aggregators": {"nope": "https://a.example"}}"#,
+        ] {
+            assert!(ShareConfig::from_json(bad).is_err(), "{bad} must be refused");
+        }
+        let cfg = ShareConfig::from_json(r#"{"aggregators": {"0x1": "https://agg.example/"}}"#).unwrap();
+        assert_eq!(cfg.aggregators.get(&addr("0x1")).unwrap(), "https://agg.example");
+        assert!(cfg.trusted_servers().contains(&addr("0x1")));
+    }
+
+    #[test]
+    fn header_server_sets_are_checked() {
+        let cfg = ShareConfig::from_json("{}").unwrap();
+        let trusted = cfg.trusted_servers();
+        let (one, two, committee) = (addr(MYSTEN_TESTNET_1), addr(MYSTEN_TESTNET_2), addr(MYSTEN_TESTNET_COMMITTEE));
+        // Entries of the first preview: 2-of-2 on the open servers.
+        let set = ServerSet::from_header(&[one, two], 2, &trusted).unwrap();
+        assert_eq!(set.to_json()["threshold"], 2);
+        // A committee entry is readable with the default config.
+        assert!(ServerSet::from_header(&[committee], 1, &trusted).is_ok());
+        assert!(ServerSet::from_header(&[one, two], 1, &trusted).is_ok());
+        let unknown = ServerSet::from_header(&[one, addr("0xbad")], 1, &trusted).unwrap_err();
+        assert!(unknown.to_string().contains("untrusted key server"), "{unknown}");
+        let weighted = ServerSet::from_header(&[one, one, two], 2, &trusted).unwrap_err();
+        assert!(weighted.to_string().contains("weighted"), "{weighted}");
+        assert!(ServerSet::from_header(&[one, two], 3, &trusted).is_err());
+        assert!(ServerSet::from_header(&[one, two], 0, &trusted).is_err());
+    }
+
+    #[test]
+    fn fetch_errors_are_classified() {
+        use sui_seal_client::{Error, Failures, KeyServerErrorKind};
+        let refused = |kind: KeyServerErrorKind, message: &str| Error::KeyServer {
+            server: "s".into(),
+            kind,
+            message: message.into(),
+        };
+        let owner =
+            || refused(KeyServerErrorKind::InvalidParameter, "Transaction was not signed by the correct sender");
+        assert_eq!(classify_fetch_error(&owner()), FetchFailure::WrongOwner);
+        assert_eq!(classify_fetch_error(&refused(KeyServerErrorKind::NoAccess, "denied")), FetchFailure::NoAccess);
+        assert_eq!(classify_fetch_error(&refused(KeyServerErrorKind::Failure, "boom")), FetchFailure::Other);
+        assert_eq!(classify_fetch_error(&Error::Transport("down".into())), FetchFailure::Other);
+        let all_owner = Error::ThresholdNotReached { got: 0, threshold: 2, failures: Failures(vec![owner(), owner()]) };
+        assert_eq!(classify_fetch_error(&all_owner), FetchFailure::WrongOwner);
+        let mixed = Error::ThresholdNotReached {
+            got: 0,
+            threshold: 2,
+            failures: Failures(vec![owner(), refused(KeyServerErrorKind::NoAccess, "denied")]),
+        };
+        assert_eq!(classify_fetch_error(&mixed), FetchFailure::NoAccess);
     }
 
     #[test]

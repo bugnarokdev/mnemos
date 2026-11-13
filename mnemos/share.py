@@ -9,6 +9,13 @@ or ``config.json``. ``push --from-memory`` only reads the local store (``recall`
 Shared state lives in ``<HERMES_HOME>/mnemos/share.json`` and what a member has read
 is cached in ``<HERMES_HOME>/mnemos/shared/<space>.json``.
 
+Key servers (BETA): a space created without options uses the Mysten open testnet
+servers, 2-of-2, as in the first preview. ``create --committee`` uses the Mysten testnet
+committee (3-of-5 behind the Mysten aggregator); ``--key-server`` and ``--threshold`` set
+an explicit list. The choice is stored per space in ``share.json`` (``seal``) and used
+by ``push``. ``pull`` reads the servers from each entry's header, so readers need no
+option.
+
 Standalone use (outside Hermes)::
 
     python -m mnemos.share --home <hermes home> <create|join|add|remove|push|pull|status|whoami> ...
@@ -24,12 +31,15 @@ from pathlib import Path
 from typing import Any
 
 PULL_EXIT_NO_ACCESS = 3
+PULL_EXIT_WRONG_OWNER = 4
 STATE_FILE = "share.json"
 CACHE_DIR = "shared"
 # Settings the share lane reads from config.json (transport only).
 TRANSPORT_KEYS = ("sui_rpc", "graphql_url", "walrus_publisher", "walrus_aggregator", "epochs", "read_source", "graphql_max_lag")
 # Optional overrides stored in share.json under "config".
-SHARE_KEYS = ("seal_package", "space_package", "key_servers", "threshold")
+SHARE_KEYS = ("seal_package", "space_package", "key_server_profile", "key_servers", "threshold", "aggregators")
+# Per-space key server settings stored in share.json under spaces.<name>.seal.
+SPACE_SEAL_KEYS = ("key_server_profile", "key_servers", "threshold")
 
 
 class ShareUnavailable(RuntimeError):
@@ -79,13 +89,39 @@ def save_state(home: str, state: dict[str, Any]) -> None:
     os.replace(tmp, path)
 
 
-def share_config(home: str, state: dict[str, Any]) -> dict[str, Any]:
+def share_config(home: str, state: dict[str, Any], seal: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Transport settings from config.json, share overrides from share.json, then the
+    key server settings of one space (``seal``), which win."""
     from .py_engine import load_file_config
 
     base = load_file_config(home)
     config = {key: base[key] for key in TRANSPORT_KEYS if key in base}
     config.update({key: value for key, value in (state.get("config") or {}).items() if key in SHARE_KEYS})
+    if seal:
+        if seal.get("key_server_profile") and "key_servers" not in seal:
+            # A profile brings its own servers and threshold: drop global ones.
+            config.pop("key_servers", None)
+            config.pop("threshold", None)
+        config.update({key: value for key, value in seal.items() if key in SPACE_SEAL_KEYS})
     return config
+
+
+def seal_from_args(args) -> dict[str, Any]:
+    """Key server settings given on ``create`` / ``join`` (empty: defaults)."""
+    seal: dict[str, Any] = {}
+    servers = list(getattr(args, "key_server", None) or [])
+    if getattr(args, "committee", False):
+        if servers:
+            raise SystemExit("--committee and --key-server are exclusive")
+        seal["key_server_profile"] = "committee"
+    if servers:
+        seal["key_servers"] = servers
+    threshold = getattr(args, "threshold", None)
+    if threshold is not None:
+        if threshold < 1:
+            raise SystemExit("--threshold must be at least 1")
+        seal["threshold"] = threshold
+    return seal
 
 
 def read_key_file(path: str) -> str:
@@ -98,13 +134,25 @@ def read_key_file(path: str) -> str:
     return raw
 
 
-def open_share(home: str, secret: str, key_file: str = ""):
-    state = load_state(home)
+def open_share(home: str, secret: str, key_file: str = "", seal: dict[str, Any] | None = None, state=None):
+    state = load_state(home) if state is None else state
     cls = native_share()
     key = read_key_file(key_file or os.environ.get("MNEMOS_SHARE_KEY_FILE", ""))
     if not key and not secret:
         raise SystemExit("no signer: set MNEMOS_SHARE_KEY_FILE (or --key-file) or MNEMOS_SECRET")
-    return cls(json.dumps(share_config(home, state)), key, secret), state
+    try:
+        return cls(json.dumps(share_config(home, state, seal)), key, secret), state
+    except RuntimeError as exc:
+        # Invalid key server settings are refused here, before any transaction.
+        raise SystemExit(f"share settings: {exc}") from exc
+
+
+def _space_seal(args, state: dict[str, Any]) -> dict[str, Any]:
+    """Key server settings for this command: flags on create/join, else the space's own."""
+    if args.share_command in ("create", "join"):
+        return seal_from_args(args)
+    space = (state.get("spaces") or {}).get(getattr(args, "name", ""))
+    return dict((space or {}).get("seal") or {})
 
 
 def _space(state: dict[str, Any], name: str) -> dict[str, Any]:
@@ -167,8 +215,10 @@ def entries_from_args(args, home: str, secret: str) -> list[dict[str, str]]:
 
 def run(args, home: str, secret: str) -> int:
     cmd = args.share_command
+    state = load_state(home)
+    seal = _space_seal(args, state)
     try:
-        share, state = open_share(home, secret, getattr(args, "key_file", ""))
+        share, state = open_share(home, secret, getattr(args, "key_file", ""), seal, state)
     except ShareUnavailable as exc:
         print(json.dumps({"ok": False, "error": str(exc)}), file=sys.stderr)
         return 2
@@ -180,10 +230,14 @@ def run(args, home: str, secret: str) -> int:
             raise SystemExit(f"a shared space named {name!r} already exists")
         out = json.loads(share.create())
         state["spaces"][name] = {k: out[k] for k in ("space_id", "list_id", "cap_id", "owner")}
+        if seal:
+            state["spaces"][name]["seal"] = seal
         save_state(home, state)
     elif cmd == "join":
         status = json.loads(share.status(args.space))
         state["spaces"][name] = {"space_id": args.space, "list_id": status["list_id"], "owner": status["creator"]}
+        if seal:
+            state["spaces"][name]["seal"] = seal
         save_state(home, state)
         out = status
     elif cmd in ("add", "remove"):
@@ -201,6 +255,8 @@ def run(args, home: str, secret: str) -> int:
         cache = merge_pull(_load_cache(home, space["space_id"]), out)
         _save_cache(home, space["space_id"], cache)
         print(json.dumps(out, indent=2))
+        if out["counts"].get("wrong_owner"):
+            return PULL_EXIT_WRONG_OWNER
         return PULL_EXIT_NO_ACCESS if out["counts"].get("no_access") else 0
     elif cmd == "status":
         out = json.loads(share.status(_space(state, name)["space_id"]))
@@ -220,8 +276,16 @@ def add_arguments(parser) -> None:
     common.add_argument("--name", default="default", help="Local name of the shared space")
     common.add_argument("--key-file", default="", help="Signer key file (default: MNEMOS_SHARE_KEY_FILE, else the Mnemos key)")
     subs.add_parser("whoami", parents=[common], help=f"{BETA}: Print the signer address")
-    subs.add_parser("create", parents=[common], help=f"{BETA}: Create an allowlist and a shared space (you are the first member)")
-    join = subs.add_parser("join", parents=[common], help=f"{BETA}: Register a space created by someone else")
+    servers = argparse.ArgumentParser(add_help=False)
+    servers.add_argument("--committee", action="store_true",
+                         help=f"{BETA}: encrypt to the Mysten testnet committee (3-of-5 behind the Mysten aggregator)")
+    servers.add_argument("--key-server", action="append", metavar="ID",
+                         help="Key server object id (repeatable, replaces the default servers)")
+    servers.add_argument("--threshold", type=int, default=None,
+                         help="Key servers needed to decrypt (default: 2 of the 2 Mysten open servers, 1 for the committee)")
+    subs.add_parser("create", parents=[common, servers],
+                    help=f"{BETA}: Create an allowlist and a shared space (you are the first member)")
+    join = subs.add_parser("join", parents=[common, servers], help=f"{BETA}: Register a space created by someone else")
     join.add_argument("--space", required=True, help="Space object id")
     verbs = {"add": "Add a member (epoch unchanged)", "remove": "Remove a member (bumps the epoch)"}
     for verb, text in verbs.items():

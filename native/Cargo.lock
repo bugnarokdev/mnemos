@@ -3101,8 +3101,8 @@ dependencies = [
 
 [[package]]
 name = "sui-seal-client"
-version = "0.1.0"
-source = "git+https://github.com/bugnarokdev/sui-seal-client?rev=f4ffa2f268fda2838633a08046ef4af8fc717e02#f4ffa2f268fda2838633a08046ef4af8fc717e02"
+version = "0.2.0"
+source = "git+https://github.com/bugnarokdev/sui-seal-client?rev=da579f64223ff3f7a83897272937cfc4d2d55153#da579f64223ff3f7a83897272937cfc4d2d55153"
 dependencies = [
  "bcs 0.2.1",
  "chrono",

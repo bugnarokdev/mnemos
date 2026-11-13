@@ -20,7 +20,7 @@ shared password:
 2. A adds B's Sui address to the allowlist.
 3. A (or any member) pushes entries. Each entry is encrypted with
    [Seal](https://github.com/MystenLabs/seal) through
-   [`sui-seal-client`](https://github.com/bugnarokdev/sui-seal-client), stored on Walrus,
+   [`sui-seal-client`](https://github.com/bugnarokdev/sui-seal-client) v0.2.0 (BETA), stored on Walrus,
    and referenced in the Space (blob id, key id, epoch, author, blob sha256).
 4. B pulls: the Seal key servers check `allowlist::seal_approve` on chain and release
    the keys only to members. C, who is not a member, is refused.
@@ -35,11 +35,14 @@ shared password:
 | Space package `mnemos_share::space` (`move/SharedSpace`) | `0xa40e74c6ae866f18e86e9dcdfc9d29af436597264991fc81b4a289519f3500d1` |
 | Space package UpgradeCap (held by the owner address `0xa0ea…8c06`) | `0x27a9d878f827ca3693cb5fdc963ce7d87897ffc742de8b0183f8a6040f6f1b96` |
 | Space package publish transaction | `Bwx3yVdYci6XQXMXecpt3eYHCyvZr46maSQuyZfSbddM` |
-| Seal key servers | `mysten-testnet-1`, `mysten-testnet-2`, threshold 2 of 2 |
+| Seal key servers (default) | `mysten-testnet-1`, `mysten-testnet-2`, threshold 2 of 2 |
+| Seal key servers (`--committee`, BETA) | Mysten testnet committee `0xb012378c9f3799fb5b1a7083da74a4069e3c3f1c93de0b27212a5799ce1e1e98`, 3-of-5 behind `https://seal-aggregator-testnet.mystenlabs.com` |
 
-`move/SharedSpace` depends on the allowlist by git commit
-(`sui-seal-client` `f4ffa2f`), and the published package links to
-`0xe10f…7f1b` version 1.
+The native core pins `sui-seal-client` by commit to the `v0.2.0` tag
+(`da579f64223ff3f7a83897272937cfc4d2d55153`). `move/SharedSpace` still depends on the
+allowlist at `f4ffa2f`, the commit the Space package was built and published from; the
+allowlist Move sources are byte-for-byte identical in `v0.2.0`. The published package
+links to `0xe10f…7f1b` version 1.
 
 The Space only accepts a reference when:
 
@@ -66,6 +69,41 @@ forever. So:
 Removal protects the future, not the past. If an entry must stay secret from a removed
 member, it should not have been shared with them.
 
+## Key servers (BETA)
+
+Each space picks the key servers its entries are encrypted to. The choice is made at
+`create` (or `join`) and stored with the space in `<HERMES_HOME>/mnemos/share.json`
+(`spaces.<name>.seal`); `push` uses it without any flag.
+
+| Option | Key servers | Threshold |
+| --- | --- | --- |
+| none (default) | `mysten-testnet-1`, `mysten-testnet-2` | 2 of 2, as in the first preview |
+| `--committee` | Mysten testnet committee, reached through the Mysten aggregator | 1 (the committee itself is 3-of-5) |
+| `--threshold N` | the default servers | N |
+| `--key-server ID [--key-server ID…] [--threshold N]` | the listed key server objects | N (default 2) |
+
+Readers need no option: `pull` reads the key servers and the threshold from each entry's
+encrypted header, then asks those servers. It only contacts servers it trusts: the
+Mysten testnet servers and committee, plus the servers listed in the profile's settings.
+An entry naming any other server, or a weighted server set, is reported as `error`
+without any request.
+
+Spaces created before this change have no `seal` setting and keep the default 2-of-2;
+their entries still decrypt (the coop end-to-end run re-reads a space written by the
+previous client version).
+
+Profile-wide settings go in `share.json` under `config`: `key_server_profile`
+(`testnet` or `committee`), `key_servers`, `threshold`, and `aggregators`
+(`{"<committee key server id>": "https://…"}`) for committees other than Mysten's.
+Settings are validated before any transaction; an impossible threshold is refused with
+`share settings: …`.
+
+**Wrong owner.** If key servers answer that the approval used an object owned by another
+address (`Error::is_wrong_owner` in sui-seal-client), `pull` marks the entries
+`wrong_owner`, does not retry them, and exits with code 4. Allowlist spaces only use the
+shared allowlist object, so this should not happen; it would point at a wrong space or
+allowlist id.
+
 ## Commands
 
 Build the native core with the feature:
@@ -80,13 +118,13 @@ The commands are under `hermes mnemos-sui share`. The same code runs outside Her
 | Command | Who | Effect |
 | --- | --- | --- |
 | `share whoami` | anyone | Prints the signer address |
-| `share create [--name N]` | creator | Allowlist + Space, creator is member and holds the Cap |
-| `share join --space <id> [--name N]` | member | Registers someone else's space locally |
+| `share create [--name N] [--committee \| --key-server ID… ] [--threshold N]` | creator | Allowlist + Space, creator is member and holds the Cap; key servers as above |
+| `share join --space <id> [--name N] [key server options]` | member | Registers someone else's space locally (options only matter if you push) |
 | `share add <address>` | creator | Adds a member (epoch unchanged) |
 | `share remove <address>` | creator | Removes a member, epoch + 1 |
 | `share push --text T [--text T…]` | member | Encrypts, uploads, publishes |
 | `share push --from-memory QUERY [--limit N]` | member | Shares personal entries matching QUERY (read only) |
-| `share pull` | member | Fetches keys, decrypts, caches; exit code 3 if any entry is refused |
+| `share pull` | member | Fetches keys, decrypts, caches; exit code 3 if any entry is refused, 4 on `wrong_owner` |
 | `share status` | anyone | Epoch, number of entries per epoch |
 
 **Signer.** `MNEMOS_SHARE_KEY_FILE` (or `--key-file`) points to a Sui key file
@@ -110,8 +148,12 @@ path. Transactions that abort on chain are reported as errors.
 - The Space keeps references in a vector inside one object (Sui object size limit,
   roughly a few thousand entries).
 - Only the creator holds the Cap; there is no admin transfer command.
-- Mysten's open testnet key servers are free, rate-limited and without availability
-  guarantee. Committee (aggregator) servers are not supported yet.
+- Mysten's open testnet key servers and committee are free, rate-limited and without
+  availability guarantee. There is no automatic failover between server sets: a space
+  keeps the servers chosen at creation; a lower threshold (for example 1 of 2) tolerates
+  one server down at the cost of trusting a single server.
+- Weighted key servers and API keys (permissioned servers), available in
+  sui-seal-client v0.2.0, are not exposed here.
 - The `seal-sdk` and `crypto` crates are git dependencies pinned by commit, so this
   feature cannot be published to crates.io yet.
 
@@ -119,22 +161,28 @@ path. Transactions that abort on chain are reported as errors.
 
 This roadmap is indicative only: no dates, no commitments, and the order may change.
 
-1. **v0.1 beta (this branch):** allowlist-based cooperative sharing on testnet.
-2. **Key servers:** committee (aggregator) key servers, and configurable servers and
-   threshold with failover.
-3. **More access policies:** subscription, time-limited access.
-4. **Python bindings** for sui-seal-client, so the Python backend can share too.
+1. **v0.1 beta:** allowlist-based cooperative sharing on testnet.
+2. **Key servers (this branch, BETA, on sui-seal-client v0.2.0):** Mysten testnet
+   committee through the aggregator, configurable servers and threshold, header-driven
+   reads. Next: failover between server sets, permissioned servers.
+3. **More access policies:** subscription and time-limited access exist in
+   sui-seal-client v0.2.0; wiring them into spaces is next.
+4. **Python backend sharing** through the sui-seal-client v0.2.0 Python bindings.
 5. **crates.io publication** once Mysten publishes `seal-sdk` and `crypto`.
 6. **Security review** of the lane and of the Move packages.
 7. **Then mainnet**, only after the review.
 
 ## Tests
 
-- `cargo test --release --features seal`: the 8 existing tests and 4 for this lane
-  (key id layout, config validation, Space parsing, entry format).
+- `cargo test --release --features seal`: the 8 existing tests and 8 for this lane
+  (key id layout, config validation, key server profiles, refused settings, header
+  server sets, fetch error classification including wrong owner, Space parsing, entry
+  format).
 - `move/SharedSpace`: 7 Move tests (`sui move test`).
-- `tests/test_share.py`: 9 offline tests (refusal on the Python backend, config
-  isolation, cache, CLI wiring, signer derivation, key file never printed).
-- `scripts/e2e_coop.sh`: the testnet scenario above, with A's personal MemoryIndex
-  created, restored and verified around it. See the
+- `tests/test_share.py`: 13 offline tests (refusal on the Python backend, config
+  isolation, cache, CLI wiring, key server flags and per-space settings, settings
+  refused before any transaction, signer derivation, key file never printed).
+- `scripts/e2e_coop.sh`: the testnet scenario above, a committee-backed space, a 1-of-2
+  space, a re-read of an earlier run's space, with A's personal MemoryIndex created,
+  restored and verified around it. See the
   [preview test report](test-report-preview-seal.md).
