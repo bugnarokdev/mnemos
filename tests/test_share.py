@@ -25,18 +25,53 @@ SECRET_ADDRESS = "0x2ea7a84f5f226a7335cf0664e50574bbf701711cb5665ee1b426924efd66
 SUI_SEED_HEX = "dd1172ec73161443121bad1b25f48bc072171429cd9d1d5198024c6ca02dac48"
 
 
-def _native_available() -> bool:
+def _available(loader) -> bool:
+    """Whether a lane is built, whatever MNEMOS_BACKEND the suite runs under."""
+    forced = os.environ.pop("MNEMOS_BACKEND", None)
     try:
-        share.native_share()
+        loader()
         return True
     except share.ShareUnavailable:
         return False
+    finally:
+        if forced is not None:
+            os.environ["MNEMOS_BACKEND"] = forced
+
+
+def _native_available() -> bool:
+    return _available(share.native_share)
+
+
+def _python_available() -> bool:
+    return _available(share.python_share)
 
 
 needs_native = pytest.mark.skipif(
     not _native_available() and os.environ.get("MNEMOS_REQUIRE_RUST") != "1",
     reason="sharing lane needs mnemos_core built with the seal feature",
 )
+needs_python = pytest.mark.skipif(
+    not _python_available() and os.environ.get("MNEMOS_REQUIRE_SEAL_PY") != "1",
+    reason="Python sharing lane needs the sui-seal-client bindings (scripts/build_seal_py.sh)",
+)
+needs_both = pytest.mark.skipif(
+    not (_native_available() and _python_available())
+    and os.environ.get("MNEMOS_REQUIRE_RUST") != "1" and os.environ.get("MNEMOS_REQUIRE_SEAL_PY") != "1",
+    reason="parity checks need both sharing lanes",
+)
+
+
+@pytest.fixture(params=["rust", "python"])
+def lane(request, monkeypatch):
+    """Each sharing lane in turn, selected the way users select it: MNEMOS_BACKEND."""
+    if request.param == "rust" and not _native_available() and os.environ.get("MNEMOS_REQUIRE_RUST") != "1":
+        pytest.skip("native sharing lane not built")
+    if request.param == "python" and not _python_available() and os.environ.get("MNEMOS_REQUIRE_SEAL_PY") != "1":
+        pytest.skip("Python sharing lane needs the sui-seal-client bindings")
+    monkeypatch.setenv("MNEMOS_BACKEND", request.param)
+    name, cls = share.share_backend()
+    assert name == request.param
+    return cls
 
 
 def _args(**values):
@@ -57,14 +92,39 @@ def _digest_tree(path: Path) -> dict:
     return {str(p.relative_to(path)): hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted(path.rglob("*")) if p.is_file()}
 
 
-def test_python_backend_refuses_share(monkeypatch, tmp_path, capsys):
+def test_backend_selection(monkeypatch):
+    def refuse(reason):
+        def loader():
+            raise share.ShareUnavailable(reason)
+        return loader
+
+    monkeypatch.setattr(share, "native_share", lambda: "native-cls")
+    monkeypatch.setattr(share, "python_share", lambda: "python-cls")
+    for forced, expected in (("", "rust"), ("rust", "rust"), ("python", "python"), ("PYTHON", "python")):
+        monkeypatch.setenv("MNEMOS_BACKEND", forced)
+        assert share.share_backend()[0] == expected
+    # No native seal feature: fall back to the Python lane, unless Rust is forced.
+    monkeypatch.setattr(share, "native_share", refuse("no seal feature"))
+    monkeypatch.delenv("MNEMOS_BACKEND")
+    assert share.share_backend() == ("python", "python-cls")
+    monkeypatch.setenv("MNEMOS_BACKEND", "rust")
+    with pytest.raises(share.ShareUnavailable, match="no seal feature"):
+        share.share_backend()
+    monkeypatch.delenv("MNEMOS_BACKEND")
+    monkeypatch.setattr(share, "python_share", refuse("no bindings"))
+    with pytest.raises(share.ShareUnavailable, match="no seal feature; no bindings"):
+        share.share_backend()
+
+
+def test_missing_bindings_refuse_without_touching_the_profile(monkeypatch, tmp_path, capsys):
     monkeypatch.setenv("MNEMOS_BACKEND", "python")
-    with pytest.raises(share.ShareUnavailable, match="native core"):
-        share.native_share()
+    monkeypatch.setitem(sys.modules, "sui_seal_client", None)  # import fails like a missing build
+    with pytest.raises(share.ShareUnavailable, match="build_seal_py.sh"):
+        share.python_share()
     home = _home(tmp_path)
     before = _digest_tree(home)
     assert share.run(_args(), str(home), SECRET) == 2
-    assert "native core" in capsys.readouterr().err
+    assert "build_seal_py.sh" in capsys.readouterr().err
     assert _digest_tree(home) == before
 
 
@@ -179,9 +239,8 @@ def test_space_settings_follow_the_space(tmp_path):
     assert share._space_seal(_args(share_command="pull", name="missing"), state) == {}
 
 
-@needs_native
-def test_native_share_signer_defaults_to_mnemos_address():
-    cls = share.native_share()
+def test_share_signer_defaults_to_mnemos_address(lane):
+    cls = lane
     assert cls("{}", "", SECRET).address() == SECRET_ADDRESS
     assert cls("{}", SUI_SEED_HEX).address() == SECRET_ADDRESS
     with pytest.raises(RuntimeError, match="no signer"):
@@ -193,8 +252,7 @@ def test_native_share_signer_defaults_to_mnemos_address():
     assert cls(json.dumps({"key_server_profile": "committee"}), SUI_SEED_HEX).address() == SECRET_ADDRESS
 
 
-@needs_native
-def test_bad_key_server_settings_fail_before_any_transaction(tmp_path):
+def test_bad_key_server_settings_fail_before_any_transaction(lane, tmp_path):
     home = _home(tmp_path)
     key_file = tmp_path / "signer.key"
     key_file.write_text(SUI_SEED_HEX, encoding="utf-8")
@@ -209,8 +267,7 @@ def test_bad_key_server_settings_fail_before_any_transaction(tmp_path):
     assert _digest_tree(home) == before, "refused settings must not create share.json"
 
 
-@needs_native
-def test_whoami_reads_key_file_without_printing_it(tmp_path, capsys):
+def test_whoami_reads_key_file_without_printing_it(lane, tmp_path, capsys):
     home = _home(tmp_path)
     key_file = tmp_path / "signer.key"
     key_file.write_text(SUI_SEED_HEX + "\n", encoding="utf-8")
@@ -222,9 +279,167 @@ def test_whoami_reads_key_file_without_printing_it(tmp_path, capsys):
     assert _digest_tree(home) == before, "whoami must not touch the profile"
 
 
-@needs_native
-def test_admin_commands_need_the_cap(tmp_path):
+def test_admin_commands_need_the_cap(lane, tmp_path):
     home = _home(tmp_path)
     share.save_state(str(home), {"spaces": {"default": {"space_id": "0x5", "list_id": "0x6", "owner": "0x7"}}, "config": {}})
     with pytest.raises(SystemExit, match="Cap"):
         share.run(_args(share_command="add", member="0xb"), str(home), SECRET)
+
+
+# --- Python lane: same rules and bytes as native/src/share.rs (BETA) -------------------------------
+
+CONFIG_CORPUS = [
+    "{}",
+    "not json",
+    '{"key_server_profile": "committee"}',
+    '{"key_server_profile": "testnet", "threshold": 1}',
+    '{"threshold": 1}',
+    '{"key_servers": null, "threshold": null}',
+    '{"seal_package": 5, "key_server_profile": 7}',
+    '{"key_servers": ["0xb012378c9f3799fb5b1a7083da74a4069e3c3f1c93de0b27212a5799ce1e1e98", "0x73d05d62c18d9374e3ea529e8e0ed6161da1a141a94d3f76ae3fe4e99356db75"], "threshold": 2}',
+    '{"key_servers": ["0X1"]}',
+    '{"key_servers": ["0xAB", "0xab"]}',
+    '{"key_servers": ["0x' + "1" * 65 + '"]}',
+    '{"key_servers": ["0x"]}',
+    '{"key_servers": ["1"], "threshold": 1}',
+    '{"key_server_profile": "mainnet"}',
+    '{"key_server_profile": "committee", "threshold": 2}',
+    '{"key_servers": []}',
+    '{"key_servers": "0x1"}',
+    '{"key_servers": ["0x1", "0x1"]}',
+    '{"key_servers": ["0xzz"]}',
+    '{"key_servers": [1]}',
+    '{"threshold": "2"}',
+    '{"threshold": true}',
+    '{"threshold": 1.0}',
+    '{"threshold": -1}',
+    '{"threshold": 0}',
+    '{"threshold": 3}',
+    '{"threshold": 256}',
+    '{"seal_package": "0xzz"}',
+    '{"space_package": "0x"}',
+    '{"aggregators": {"0x1": "https://agg.example/"}}',
+    '{"aggregators": {"0x1": "http://plain.example"}}',
+    '{"aggregators": {"0x1": 3}}',
+    '{"aggregators": ["https://a.example"]}',
+    '{"aggregators": {"nope": "https://a.example"}}',
+]
+
+
+def _outcome(cls, raw: str):
+    try:
+        return "ok", cls(raw, SUI_SEED_HEX).address()
+    except RuntimeError as exc:
+        return "refused", str(exc)
+
+
+@needs_both
+@pytest.mark.parametrize("raw", CONFIG_CORPUS)
+def test_lanes_accept_and_refuse_the_same_settings(monkeypatch, raw):
+    monkeypatch.delenv("MNEMOS_BACKEND", raising=False)
+    assert _outcome(share.python_share(), raw) == _outcome(share.native_share(), raw)
+
+
+@needs_both
+def test_lanes_derive_the_same_signer(monkeypatch):
+    monkeypatch.delenv("MNEMOS_BACKEND", raising=False)
+    py_share, rust = share.python_share(), share.native_share()
+    seed = bytes.fromhex(SUI_SEED_HEX)
+    import base64
+
+    flagged = base64.b64encode(b"\x00" + seed).decode()
+    for key, secret in ((SUI_SEED_HEX, ""), ("", SECRET), (flagged, ""), (SUI_SEED_HEX.upper(), ""),
+                        ("bad", ""), ("", ""), (base64.b64encode(b"\x01" + seed).decode(), "")):
+        assert _outcome(lambda raw, _k, k=key, s=secret: py_share(raw, k, s), "{}") == \
+            _outcome(lambda raw, _k, k=key, s=secret: rust(raw, k, s), "{}"), (key[:6], bool(secret))
+
+
+@needs_python
+def test_python_lane_matches_rust_unit_vectors():
+    from mnemos import py_share as ps
+
+    seal = ps.bindings()
+    for name in ("MYSTEN_TESTNET_1", "MYSTEN_TESTNET_2", "MYSTEN_TESTNET_COMMITTEE", "MYSTEN_TESTNET_AGGREGATOR"):
+        assert getattr(ps, name) == getattr(seal, name)
+    list_id = ps.parse_address("0x5c1b")
+    kid = ps.key_id(list_id, 3, bytes([9]) * ps.NONCE_LEN)
+    assert len(kid) == 32 + 8 + ps.NONCE_LEN and kid[32:40] == bytes([3, 0, 0, 0, 0, 0, 0, 0])
+    assert kid == bytes(seal.allowlist_key_id(list_id, 3, bytes([9]) * ps.NONCE_LEN))
+    assert ps.parse_key_id(kid) == (list_id, 3)
+    with pytest.raises(ps.ShareError):
+        ps.parse_key_id(kid[:40])
+    cfg = ps.ShareConfig.from_json("{}")
+    trusted = cfg.trusted_servers()
+    one, two, committee = ps.MYSTEN_TESTNET_1, ps.MYSTEN_TESTNET_2, ps.MYSTEN_TESTNET_COMMITTEE
+    assert ps.server_set_from_header([one, two], 2, trusted)[1] == 2
+    assert ps.server_set_from_header([committee], 1, trusted)
+    with pytest.raises(ps.ShareError, match="untrusted key server"):
+        ps.server_set_from_header([one, ps.parse_address("0xbad")], 1, trusted)
+    with pytest.raises(ps.ShareError, match="weighted"):
+        ps.server_set_from_header([one, one, two], 2, trusted)
+    for bad in (3, 0):
+        with pytest.raises(ps.ShareError):
+            ps.server_set_from_header([one, two], bad, trusted)
+
+
+@needs_python
+def test_python_entry_format_is_the_native_format():
+    from mnemos import py_share as ps
+
+    author = ps.parse_address("0xa")
+    data = ps.entry_plaintext("clé du phare \u2603", "fact", author, 42)
+    # serde_json: sorted keys, compact, raw UTF-8 (what native/src/share.rs writes).
+    assert data == ('{"author":"' + author + '","format":"mnemos-share-entry-v1","kind":"fact",'
+                    '"text":"clé du phare \u2603","ts":42}').encode("utf-8")
+    assert ps.parse_entry_plaintext(data)["text"] == "clé du phare \u2603"
+    for bad in (b'{"format":"other","text":"x"}', b"not json"):
+        with pytest.raises(ps.ShareError):
+            ps.parse_entry_plaintext(bad)
+
+
+@needs_python
+def test_python_space_json_is_checked():
+    import base64
+
+    from mnemos import py_share as ps
+
+    list_id = ps.parse_address("0x5c1b")
+    kid = ps.key_id(list_id, 1, bytes([7]) * ps.NONCE_LEN)
+    good = {"list_id": list_id, "creator": "0xa", "entries": [{
+        "blob_id": "blob", "key_id": base64.b64encode(kid).decode(), "epoch": "1", "author": "0xa",
+        "blob_sha256": "01" * 32}]}
+    state = ps.parse_space(good)
+    assert len(state["entries"]) == 1 and state["entries"][0]["epoch"] == 1 and state["entries"][0]["key_id"] == kid
+    for path, value in ((("entries", 0, "epoch"), "0"), (("entries", 0, "blob_sha256"), "0102"), (("list_id",), "0x5c1c")):
+        bad = json.loads(json.dumps(good))
+        target = bad
+        for step in path[:-1]:
+            target = target[step]
+        target[path[-1]] = value
+        with pytest.raises(ps.ShareError):
+            ps.parse_space(bad)
+
+
+@needs_python
+def test_python_entry_roundtrip_offline():
+    """Encrypt an entry the way push does and read it back the way pull does, with in-process
+    key servers (no network): key id, header checks and plaintext format."""
+    from mnemos import py_share as ps
+
+    seal = ps.bindings()
+    servers = [seal.LocalKeyServer(ps.parse_address(hex(i))) for i in (1, 2, 3)]
+    client = seal.SealClient.with_local_servers(servers, 2)
+    list_id = ps.parse_address("0x5c1b")
+    kid = ps.key_id(list_id, 4, os.urandom(ps.NONCE_LEN))
+    author = ps.parse_address("0xa")
+    blob = bytes(client.encrypt(ps.DEFAULT_SEAL_PACKAGE, kid, ps.entry_plaintext("hello", "fact", author, 7)))
+    info = seal.parse_encrypted_object(blob)
+    assert ps.parse_address(info.package_id) == ps.DEFAULT_SEAL_PACKAGE
+    assert bytes(info.id) == kid and ps.parse_key_id(bytes(info.id)) == (list_id, 4)
+    trusted = ps.ShareConfig.from_json(json.dumps({"key_servers": [s.object_id for s in servers], "threshold": 2})).trusted_servers()
+    assert ps.server_set_from_header(list(info.key_servers), info.threshold, trusted)[1] == 2
+    with pytest.raises(ps.ShareError, match="untrusted"):
+        ps.server_set_from_header(list(info.key_servers), info.threshold, ps.ShareConfig.from_json("{}").trusted_servers())
+    keys = seal.derive_keys(servers[:2], ps.DEFAULT_SEAL_PACKAGE, kid)
+    value = ps.parse_entry_plaintext(bytes(client.decrypt(blob, keys)))
+    assert (value["text"], value["author"], value["ts"]) == ("hello", author, 7)
