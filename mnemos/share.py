@@ -1,8 +1,13 @@
 """BETA (testnet preview): cooperative sharing lane on Sui testnet and Walrus testnet only.
 
 A shared space is a Seal allowlist plus a ``mnemos_share::space::Space`` that lists
-Seal-encrypted Walrus blobs. The lane runs in the native core built with the ``seal``
-feature; the Python backend has no Seal implementation and refuses these commands.
+Seal-encrypted Walrus blobs. Two implementations serve the same commands, with the same
+on-chain calls, ``share.json`` and entry format, so members can mix them in one space:
+
+- the native core built with the ``seal`` feature (used by default when available);
+- the Python backend (``mnemos.py_share``) on the sui-seal-client v0.2.0 Python
+  bindings, built from a pinned commit by ``scripts/build_seal_py.sh``. It is used with
+  ``MNEMOS_BACKEND=python`` or when the native core has no ``seal`` feature.
 
 It is separate from personal memory: it never writes the MemoryIndex, the local store
 or ``config.json``. ``push --from-memory`` only reads the local store (``recall``).
@@ -46,13 +51,40 @@ class ShareUnavailable(RuntimeError):
     pass
 
 
+def python_share():
+    """Return the Python ``Share`` class or raise ``ShareUnavailable`` with the reason."""
+    try:
+        from . import py_share
+
+        py_share.bindings()
+    except ImportError as exc:
+        raise ShareUnavailable(
+            "the Python sharing lane needs the sui-seal-client Python bindings (BETA): scripts/build_seal_py.sh"
+        ) from exc
+    return py_share.Share
+
+
+def share_backend():
+    """``(name, Share class)``: native unless ``MNEMOS_BACKEND=python`` or the native core
+    lacks the ``seal`` feature; ``MNEMOS_BACKEND=rust`` requires the native core."""
+    forced = os.environ.get("MNEMOS_BACKEND", "").strip().lower()
+    if forced == "python":
+        return "python", python_share()
+    try:
+        return "rust", native_share()
+    except ShareUnavailable as native_reason:
+        if forced == "rust":
+            raise
+        try:
+            return "python", python_share()
+        except ShareUnavailable as python_reason:
+            raise ShareUnavailable(f"{native_reason}; {python_reason}") from python_reason
+
+
 def native_share():
     """Return the native ``Share`` class or raise ``ShareUnavailable`` with the reason."""
     if os.environ.get("MNEMOS_BACKEND", "").strip().lower() == "python":
-        raise ShareUnavailable(
-            "the sharing lane needs the native core (Seal is not implemented in the Python backend); "
-            "unset MNEMOS_BACKEND=python and build mnemos_core with the seal feature"
-        )
+        raise ShareUnavailable("MNEMOS_BACKEND=python selects the Python sharing lane, not the native core")
     try:
         import mnemos_core
     except ImportError as exc:
@@ -136,7 +168,7 @@ def read_key_file(path: str) -> str:
 
 def open_share(home: str, secret: str, key_file: str = "", seal: dict[str, Any] | None = None, state=None):
     state = load_state(home) if state is None else state
-    cls = native_share()
+    _name, cls = share_backend()
     key = read_key_file(key_file or os.environ.get("MNEMOS_SHARE_KEY_FILE", ""))
     if not key and not secret:
         raise SystemExit("no signer: set MNEMOS_SHARE_KEY_FILE (or --key-file) or MNEMOS_SECRET")
