@@ -3,6 +3,73 @@
 > **BETA (testnet preview).** These results cover a preview branch on Sui testnet, Walrus
 > testnet and the Mysten Seal testnet key servers. They say nothing about mainnet.
 
+## Run of 13 November 2026: sui-seal-client v0.2.0, key servers (BETA)
+
+| | |
+| --- | --- |
+| When | 13 November 2026, 01:23 to 01:37 Paris time (UTC+1) |
+| Tested commit | `4e4096c` on `preview/seal` (base `main` `f3dff2d`) |
+| Runs | the full suite twice in a row (run 1 at 01:23, run 2 at 01:30), both green, zero errors |
+| Network | Sui testnet, Walrus testnet, Seal `mysten-testnet-1`, `mysten-testnet-2` and the Mysten testnet committee `0xb012…1e98` through `seal-aggregator-testnet.mystenlabs.com` |
+| Toolchain | Linux x86_64, rustc 1.99.1, Python 3.12.14, pytest 9.2.0, sui CLI 1.84.0, mnemos_core 0.2.3 built from the tested commit with `--features seal` |
+| Dependencies | sui-seal-client `v0.2.0` (`da579f6`, git), allowlist package `0xe10f…7f1b`, Space package `0xa40e…00d1` (unchanged) |
+
+Results, identical in both runs:
+
+| Suite | Result |
+| --- | --- |
+| `cargo fmt --check` | clean (new in this run; `50e5dbb` formats the core, no code change) |
+| `cargo test --release` (default features) | 8 passed |
+| `cargo test --release --features seal` | 16 passed: the 8 existing + 8 for the lane (4 new: key server profiles, refused settings, header server sets, fetch errors incl. wrong owner) |
+| `cargo clippy --release --all-targets -D warnings` | clean, with and without `seal` |
+| `sui move test` in `move/SharedSpace` | 7 passed |
+| `pytest`, `MNEMOS_REQUIRE_RUST=1` | 62 passed (58 before + 4 new in `test_share.py`) |
+| `pytest`, `MNEMOS_BACKEND=python` | 57 passed, 5 skipped (the native-only share tests) |
+| Personal end-to-end: rust, python, cross, guard | all passed, fresh indexes in each run |
+| Coop end-to-end, `scripts/e2e_coop.sh` | 52 assertions passed (the 34 below + 18 new) |
+
+New coop assertions:
+
+1. The default space still reports the first preview's settings (2-of-2 on the two open
+   servers), nothing extra is stored for it, and its entry headers name those servers.
+2. `create --threshold 3` is refused before any transaction; no space is recorded.
+3. `create --committee`: entries go to the committee server with threshold 1, the choice
+   is stored in `share.json`, and `push` uses it without a flag.
+4. B, with default settings, reads the committee entry through the aggregator; the
+   header names the committee. C (not a member) is refused by the committee.
+5. `create --key-server … --key-server … --threshold 1`: A pushes and reads the 1-of-2
+   entry, its header says threshold 1; C is still refused.
+6. The default space reads 4 entries with 2-of-2 headers after the other spaces exist.
+7. Backward compatibility: A re-reads the space written on 12 November by the previous
+   client (`f4ffa2f`), [`0xe365cc79…eab8`](https://testnet.suivision.xyz/object/0xe365cc796cebbfd2269db66f48c49240919f46ba0647ab941a8671858501eab8): 4 entries, ok 4,
+   exact texts, 2-of-2 headers. No gas.
+
+Gas, measured from balances before and after each run: A paid 0.040277868 SUI per run
+(11 transactions: 6 for the default space, 3 for the committee space, 2 for the 1-of-2
+space), 0.080555736 SUI for both. The personal Mnemos address paid 0.028414176 SUI per
+run for the personal end-to-end and A's MemoryIndex. Walrus uploads go through the
+public testnet publisher.
+
+Run 1:
+
+| Space | Space object | Transactions |
+| --- | --- | --- |
+| default (2-of-2) | [`0x8b0fb738…1a86`](https://testnet.suivision.xyz/object/0x8b0fb73809661d7648d4232d57f7229ef31be5237676f74169771d3f752b1a86) | create [`71paHvaZvV…`](https://testnet.suivision.xyz/txblock/71paHvaZvVqRZEUUkiAtjmrPCbwp3uQwQfE1SNKci3gt) |
+| committee | [`0x664e7e2a…8138`](https://testnet.suivision.xyz/object/0x664e7e2ad746811cd22ebfd95109377ac2bd422315f10c9ab43d6e26ecc98138) | create [`HkwfK6m6pd…`](https://testnet.suivision.xyz/txblock/HkwfK6m6pdfQJM3RxF8K2bZ5jemfkTqECwHYJWCvWhsq), add B [`9tX6WHNg2Q…`](https://testnet.suivision.xyz/txblock/9tX6WHNg2Q5XauwPdG18gMHv5XgPdGArShV9X6Gzsy5X), push [`DDr57ZixZ9…`](https://testnet.suivision.xyz/txblock/DDr57ZixZ9zE4VR8FPZguvGURB2proNc7MsLZLDLos3h) · [`PvAqMcWzs-…`](https://aggregator.walrus-testnet.walrus.space/v1/blobs/PvAqMcWzs-VH6bZHH6DbA7CEGmqLhens6sWlaElpe_U) |
+| 1-of-2 | [`0xc6863a29…9fa0`](https://testnet.suivision.xyz/object/0xc6863a29996c3726a0223ed3900ca289e771b5d378d47c4b8dde8ea3a9ac9fa0) | create [`HjPTcEaRCJ…`](https://testnet.suivision.xyz/txblock/HjPTcEaRCJsHPAen9V2Ko4zrNJQBBPeJ9FT5KpoXyyy2), push [`HePoiStxfe…`](https://testnet.suivision.xyz/txblock/HePoiStxfeMJSdkU3fgwKrrHEKTBrVuCVQVxJGkpz4eq) · [`e80kSbr3Gk…`](https://aggregator.walrus-testnet.walrus.space/v1/blobs/e80kSbr3GkKshHN7xPKS1m3VoE8zDOy3EcyAxOYwsP8) |
+| MemoryIndex A | [`0xe0969f98…fbf8`](https://testnet.suivision.xyz/object/0xe0969f989aa4551441363c3e9444019634d129f130129008cb2b4ea14998fbf8) | |
+
+Run 2:
+
+| Space | Space object | Transactions |
+| --- | --- | --- |
+| default (2-of-2) | [`0xe90d4b48…902c`](https://testnet.suivision.xyz/object/0xe90d4b485266e660675613b6fd377eaff5064b47b29746b58032b1ceffa1902c) | create [`BzjkpHuc8o…`](https://testnet.suivision.xyz/txblock/BzjkpHuc8oKYCULes3VMNawwDwEiLuLndNF2xLZGrGx3) |
+| committee | [`0xb87e3655…ccfe`](https://testnet.suivision.xyz/object/0xb87e36557ccebc58e4d37fdc4d31c0e1866ccc4ef61199b9f4868910ee37ccfe) | create [`4VZyVXhubQ…`](https://testnet.suivision.xyz/txblock/4VZyVXhubQBAXRp7EJpsTKgySmjE7xhtvsmVPqophGqg), add B [`9UtqxeLDYu…`](https://testnet.suivision.xyz/txblock/9UtqxeLDYuUw6LxYvbB3TXouWdsBWtv9GNugvMkCUoBF), push [`4q2S2PMB4B…`](https://testnet.suivision.xyz/txblock/4q2S2PMB4BAK1p1mK5Ss63VxjRKMy5aJDFqyuidmE9Ee) · [`jjXIAQ3Ixj…`](https://aggregator.walrus-testnet.walrus.space/v1/blobs/jjXIAQ3IxjZSeWlC5aWZps29o1vVr-q5kTcXHPTj3Gs) |
+| 1-of-2 | [`0x0c07f3ba…084b`](https://testnet.suivision.xyz/object/0x0c07f3bac63b2a8463ebcbc68c66bf0249971d304eb1380506cab346e186084b) | create [`9qcapV3W6v…`](https://testnet.suivision.xyz/txblock/9qcapV3W6vkQstghpUFZbiKWpNNAdEj3vJevay8cyrEL), push [`CoSbTaxE4M…`](https://testnet.suivision.xyz/txblock/CoSbTaxE4M2tca2gx6BA5dtRwRRqq6q45unPigbdDJve) · [`E168Vnvec3…`](https://aggregator.walrus-testnet.walrus.space/v1/blobs/E168Vnvec3DubC6wlN_EKYgLMRHd4DxGRClRbil8Xrc) |
+| MemoryIndex A | [`0x8b7db4f1…3737`](https://testnet.suivision.xyz/object/0x8b7db4f1cf2cc30dd5be77f790769744cb23528a2fee01536227e84fa3153737) | |
+
+## Run of 12 November 2026: first preview, sui-seal-client `f4ffa2f`
+
 | | |
 | --- | --- |
 | When | 12 November 2026, 13:36 to 13:47 Paris time (UTC+1) |
