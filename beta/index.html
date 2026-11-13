@@ -58,14 +58,16 @@
       <p>Each entry is encrypted with Seal to the key servers its space chose: <code>mysten-testnet-1</code> and <code>-2</code> at 2 of 2 by default. On pull, the key servers dry-run <code>seal_approve</code> and answer members only. Non-members get nothing.</p>
     </li>
     <li>
-      <h2>Rust, open source</h2>
-      <p>Built on <a href="https://github.com/bugnarokdev/sui-seal-client" target="_blank" rel="noopener noreferrer">sui-seal-client</a>, a Rust client for Seal. Native core only, behind the <code>seal</code> cargo feature; the Python backend refuses <code>share</code> with a clear message.</p>
+      <h2>Two lanes, one format</h2>
+      <p>Built on <a href="https://github.com/bugnarokdev/sui-seal-client" target="_blank" rel="noopener noreferrer">sui-seal-client</a>, an open-source Rust client for Seal. <code>share</code> runs in the native Rust core (<code>seal</code> cargo feature) or in the Python backend on the client's Python bindings. Same commands, same on-chain calls, same entry format: Rust and Python members share one space.</p>
     </li>
   </ol>
 
   <div class="term" role="region" aria-label="Coop commands">
-    <div class="bar"><i></i><i></i><i></i><span>MNEMOS_FEATURES=seal scripts/build_core.sh</span></div>
-<pre><span class="p">$</span> hermes mnemos-sui share whoami                 <span class="c"># signer address</span>
+    <div class="bar"><i></i><i></i><i></i><span>bugnarokdev@machine-a ~</span></div>
+<pre><span class="p">$</span> MNEMOS_FEATURES=seal scripts/build_core.sh   <span class="c"># native lane (Rust)</span>
+<span class="p">$</span> scripts/build_seal_py.sh                     <span class="c"># Python lane, bindings from v0.2.0</span>
+<span class="p">$</span> hermes mnemos-sui share whoami                 <span class="c"># signer address</span>
 <span class="p">$</span> hermes mnemos-sui share create --name crew     <span class="c"># allowlist + Space, you hold the Cap</span>
 <span class="p">$</span> hermes mnemos-sui share create --name ops --committee
                                                 <span class="c"># Mysten committee 3-of-5, threshold 1</span>
@@ -81,9 +83,16 @@
 
   <div class="cols">
     <div>
+      <h2>Rust or Python, same space</h2>
+      <p>The native lane is the default when the core is built with <code>seal</code>; <code>MNEMOS_BACKEND=rust</code> forces it. When the core lacks <code>seal</code>, <code>share</code> falls back to the Python lane, which runs on the sui-seal-client v0.2.0 Python bindings built locally by <code>scripts/build_seal_py.sh</code> from the pinned commit <code>da579f6</code>. Both lanes use the same <code>share.json</code>, entry format and on-chain calls. Entries, removal and epochs, committee and 1-of-2 spaces are cross-tested in both directions. The bindings are not on PyPI yet: you need a Rust toolchain and maturin to build them.</p>
+    </div>
+    <div>
       <h2>Key servers, per space</h2>
       <p>Chosen once, at <code>share create</code> or <code>share join</code>, and used by every push. Default: <code>mysten-testnet-1</code> and <code>-2</code>, 2 of 2, unchanged from the first preview. <code>--committee</code>: the Mysten testnet committee, 3-of-5 behind its aggregator, threshold 1. <code>--key-server ID… --threshold N</code>: your own list. Readers pass no option: <code>pull</code> reads the servers and threshold from each entry's encrypted header, so older spaces still decrypt, and it only contacts servers it trusts. Entries tied to an object owned by another address come back <code>wrong_owner</code> and <code>pull</code> exits with code 4. No automatic failover yet: a space keeps the servers it was created with.</p>
     </div>
+  </div>
+
+  <div class="cols">
     <div>
       <h2>Revocation, honestly</h2>
       <p>Seal keys cannot be taken back. The epoch is part of every key id, and removing a member bumps it. After removal, that member cannot fetch any new key and cannot read anything pushed afterwards. What they already fetched, they keep: keys obtained before removal still decrypt the older entries. The coop test asserts exactly that. Removal protects the future, not the past.</p>
@@ -97,7 +106,7 @@
   <dl class="facts">
     <div><dt>Branch</dt><dd><a href="https://github.com/bugnarokdev/mnemos/tree/preview/seal" target="_blank" rel="noopener noreferrer"><code>preview/seal</code></a></dd></div>
     <div><dt>Docs</dt><dd><a href="https://github.com/bugnarokdev/mnemos/blob/preview/seal/docs/en/preview-seal.md" target="_blank" rel="noopener noreferrer">English</a> · <a href="https://github.com/bugnarokdev/mnemos/blob/preview/seal/docs/fr/preview-seal.md" hreflang="fr" target="_blank" rel="noopener noreferrer">Français</a></dd></div>
-    <div><dt>Test report</dt><dd><a href="https://github.com/bugnarokdev/mnemos/blob/preview/seal/docs/en/test-report-preview-seal.md" target="_blank" rel="noopener noreferrer">Coop e2e: 52/52, two runs</a></dd></div>
+    <div><dt>Test report</dt><dd><a href="https://github.com/bugnarokdev/mnemos/blob/preview/seal/docs/en/test-report-preview-seal.md" target="_blank" rel="noopener noreferrer">Coop e2e: 84/84, two runs</a></dd></div>
     <div><dt>Key servers</dt><dd>2-of-2 default · committee 3-of-5 · custom list</dd></div>
   </dl>
 
@@ -106,9 +115,10 @@
     <li class="done"><b>Coop beta.</b> Allowlist-based shared spaces on testnet. <span class="dim">First preview.</span></li>
     <li class="done"><b>Client v0.2.</b> Configurable servers and threshold, committee key servers, more policies, Python bindings. <span class="dim">Released in sui-seal-client, BETA.</span></li>
     <li class="done"><b>Wire v0.2 into Mnemos.</b> Per-space key servers: default 2-of-2, Mysten committee or a custom list, read back from each entry on pull. <span class="dim">This preview, BETA.</span></li>
+    <li class="done"><b>Python backend sharing.</b> The same <code>share</code> commands on the sui-seal-client v0.2.0 Python bindings, interoperable with the native lane. <span class="dim">This preview, BETA.</span></li>
     <li><b>Failover and weighted servers.</b> Automatic failover between server sets, weighted servers, API keys for permissioned servers.</li>
+    <li><b>Publish Python binding wheels</b>, so the Python lane installs without a local Rust build.</li>
     <li><b>Time-limited and subscription spaces</b>, on the policies already in the client.</li>
-    <li><b>Python backend sharing</b> through the bindings, so <code>share</code> no longer needs the native core.</li>
     <li><b>Coop mission board.</b> Missions in a shared Sui object, claimed on chain. A claim makes Seal open that task's memory to the claimer. Delivery is signed and validated by the maintainer; validation unlocks dependent missions, expired claims revert, and reputation is earned on chain, verifiable by anyone.</li>
     <li><b>Security review</b> of the lane and the Move packages.</li>
     <li><b>crates.io</b>, once Mysten publishes <code>seal-sdk</code> and <code>crypto</code>.</li>
