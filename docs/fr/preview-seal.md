@@ -6,9 +6,11 @@
 > remis à zéro. Ne partagez rien que vous ne pouvez pas perdre ou voir fuiter.
 
 La mémoire personnelle reste exactement la même : `MNEMOS_SECRET`, Argon2id, blobs
-XChaCha20-Poly1305, votre `MemoryIndex`, Walrus. La voie de partage est un chemin séparé,
-compilé seulement avec la feature cargo `seal`. Elle n'écrit jamais dans le MemoryIndex,
-le stockage local ni `config.json`.
+XChaCha20-Poly1305, votre `MemoryIndex`, Walrus. La voie de partage est un chemin séparé
+avec deux implémentations : le cœur natif, compilé seulement avec la feature cargo
+`seal`, et une implémentation Python sur les bindings Python de sui-seal-client v0.2.0
+(toutes deux BETA, voir [Deux implémentations](#deux-implémentations-beta)). Elle n'écrit
+jamais dans le MemoryIndex, le stockage local ni `config.json`.
 
 ## Ce qu'elle fait
 
@@ -40,7 +42,8 @@ mémoire, sans mot de passe commun :
 | Serveurs de clés Seal (`--committee`, BETA) | Comité testnet de Mysten `0xb012378c9f3799fb5b1a7083da74a4069e3c3f1c93de0b27212a5799ce1e1e98`, 3 sur 5 derrière `https://seal-aggregator-testnet.mystenlabs.com` |
 
 Le cœur natif fige `sui-seal-client` par commit sur le tag `v0.2.0`
-(`da579f64223ff3f7a83897272937cfc4d2d55153`). `move/SharedSpace` dépend toujours de
+(`da579f64223ff3f7a83897272937cfc4d2d55153`), et `scripts/build_seal_py.sh` compile les
+bindings Python depuis ce même commit. `move/SharedSpace` dépend toujours de
 l'allowlist à `f4ffa2f`, le commit à partir duquel le package Space a été compilé et
 publié ; les sources Move de l'allowlist sont identiques octet pour octet dans `v0.2.0`.
 Le package publié est lié à `0xe10f…7f1b` version 1.
@@ -102,18 +105,41 @@ de Mysten. Les réglages sont validés avant toute transaction ; un seuil imposs
 refusé avec `share settings: …`.
 
 **Mauvais propriétaire.** Si les serveurs de clés répondent que l'approbation a utilisé
-un objet appartenant à une autre adresse (`Error::is_wrong_owner` dans sui-seal-client),
+un objet appartenant à une autre adresse (`Error::is_wrong_owner` dans sui-seal-client, `WrongOwnerError` dans ses bindings
+Python),
 `pull` marque les entrées `wrong_owner`, ne réessaie pas et sort avec le code 4. Les
 espaces à allowlist n'utilisent que l'objet allowlist partagé, donc ce cas ne devrait pas
 arriver ; il signalerait un mauvais id d'espace ou d'allowlist.
 
-## Commandes
+## Deux implémentations (BETA)
 
-Compiler le cœur natif avec la feature :
+La voie existe deux fois, avec les mêmes commandes, les mêmes appels on-chain, le même
+`share.json` et le même format d'entrée chiffrée :
+
+| Voie | Construite depuis | Choisie quand |
+| --- | --- | --- |
+| native (Rust) | `native/src/share.rs`, feature cargo `seal` | par défaut si le cœur a la feature `seal` ; forcée avec `MNEMOS_BACKEND=rust` |
+| Python | `mnemos/py_share.py` sur les bindings Python de sui-seal-client v0.2.0 | `MNEMOS_BACKEND=python`, ou automatiquement si le cœur n'a pas `seal` |
+
+Les membres d'un même espace peuvent utiliser des voies différentes : une entrée écrite
+par l'une est lue par l'autre, et un espace créé par l'une s'administre avec l'autre (le
+test de bout en bout coop vérifie chaque sens). Les deux voies affichent le même JSON
+pour le même état.
+
+Compiler l'une ou les deux :
 
 ```sh
-MNEMOS_FEATURES=seal scripts/build_core.sh
+MNEMOS_FEATURES=seal scripts/build_core.sh   # voie native
+scripts/build_seal_py.sh                       # voie Python (Rust et maturin requis)
 ```
+
+`scripts/build_seal_py.sh` clone sui-seal-client, se place sur le commit figé de `v0.2.0`
+`da579f64223ff3f7a83897272937cfc4d2d55153` (et le vérifie), compile `python/` avec
+`maturin build --release --locked` et installe le wheel dans `MNEMOS_PYTHON`. Sans les
+bindings, `MNEMOS_BACKEND=python` fait refuser `share` avec un message qui nomme le
+script, avant de lire la moindre clé ou de toucher au profil.
+
+## Commandes
 
 Les commandes sont sous `hermes mnemos-sui share`. Le même code tourne hors de Hermes avec
 `python -m mnemos.share --home <HERMES_HOME> …`. Chaque commande affiche du JSON.
@@ -131,8 +157,8 @@ Les commandes sont sous `hermes mnemos-sui share`. Le même code tourne hors de 
 | `share status` | tous | Epoch, nombre d'entrées par epoch |
 
 **Signataire.** `MNEMOS_SHARE_KEY_FILE` (ou `--key-file`) désigne un fichier de clé Sui
-(suiprivkey, base64 de keystore ou seed hex de 32 octets). Le fichier est lu, transmis au
-cœur natif et jamais affiché. Sans lui, le signataire est l'adresse Sui Mnemos du profil
+(suiprivkey, base64 de keystore ou seed hex de 32 octets). Le fichier est lu, transmis à
+la voie de partage et jamais affiché. Sans lui, le signataire est l'adresse Sui Mnemos du profil
 (dérivée de `MNEMOS_SECRET`). Les clés de session et les clés obtenues restent en mémoire.
 
 **Gas.** `create`, `add`, `remove` et `push` sont des transactions Sui payées par le
@@ -143,9 +169,10 @@ chemin personnel. Une transaction qui échoue on-chain est remontée comme une e
 
 ## Limites de cette preview
 
-- **Rust uniquement.** Le backend Python n'a pas d'implémentation de Seal ; avec
-  `MNEMOS_BACKEND=python` ou un cœur compilé sans `seal`, `share` refuse avec un message
-  clair. La mémoire personnelle marche avec les deux backends, comme avant.
+- **Deux voies, un format.** La voie Python a besoin des bindings compilés par
+  `scripts/build_seal_py.sh` (toolchain Rust et maturin) ; ils ne sont pas sur PyPI. Sans
+  les bindings et sans cœur `seal`, `share` refuse avec un message clair. La mémoire
+  personnelle marche avec les deux backends, comme avant.
 - Les entrées sont des éléments de texte, pas des snapshots complets, et ne sont pas
   fusionnées dans la mémoire personnelle : elles vivent dans l'espace et dans le cache
   de l'espace.
@@ -173,24 +200,32 @@ l'ordre peut changer.
    l'en-tête. Ensuite : bascule entre jeux de serveurs, serveurs à permission.
 3. **D'autres règles d'accès :** l'abonnement et l'accès à durée limitée existent dans
    sui-seal-client v0.2.0 ; les brancher sur les espaces vient ensuite.
-4. **Partage depuis le backend Python** via les bindings Python de sui-seal-client
-   v0.2.0.
+4. **Partage depuis le backend Python (cette branche, BETA) :** fait, via les bindings
+   Python de sui-seal-client v0.2.0, interopérable avec la voie native. Ensuite : des
+   bindings installables (wheels) au lieu d'une compilation locale.
 5. **Publication sur crates.io** quand Mysten publiera `seal-sdk` et `crypto`.
 6. **Revue de sécurité** de la voie et des packages Move.
 7. **Puis mainnet**, seulement après la revue.
 
 ## Tests
 
-- `cargo test --release --features seal` : les 8 tests existants et 8 pour cette voie
+- `cargo test --release --features seal` : les 8 tests existants et 8 pour la voie native
   (format de l'id de clé, validation de la config, profils de serveurs, réglages
   refusés, jeux de serveurs des en-têtes, classement des erreurs dont le mauvais
   propriétaire, lecture du Space, format des entrées).
 - `move/SharedSpace` : 7 tests Move (`sui move test`).
-- `tests/test_share.py` : 13 tests hors ligne (refus sur le backend Python, isolation de
-  la config, cache, branchement CLI, options de serveurs et réglages par espace,
-  réglages refusés avant toute transaction, dérivation du signataire, fichier de clé
-  jamais affiché).
+- `tests/test_share.py` : 57 vérifications hors ligne (choix de la voie, refus sans les
+  bindings, isolation de la config, cache, branchement CLI, options de serveurs et
+  réglages par espace ; sur chaque voie : réglages refusés avant toute transaction,
+  dérivation du signataire, fichier de clé jamais affiché ; parité : les deux voies
+  acceptent et refusent les mêmes 34 réglages avec le même message et dérivent les
+  mêmes signataires ; la voie Python face aux vecteurs unitaires natifs, les octets
+  exacts d'une entrée, et un chiffrement/déchiffrement hors ligne avec des serveurs de
+  clés en mémoire).
 - `scripts/e2e_coop.sh` : le scénario testnet ci-dessus, un espace sur le comité, un
-  espace en 1 sur 2, une relecture de l'espace d'un run précédent, avec le MemoryIndex
+  espace en 1 sur 2, un espace créé par la voie Python avec des entrées qui passent
+  d'une voie à l'autre dans les deux sens (retrait et epoch par la voie Python, entrées
+  Python dans les espaces comité et 1 sur 2), une relecture de l'espace d'un run
+  précédent sur les deux voies, avec le MemoryIndex
   personnel de A créé, restauré et vérifié autour. Voir le
   [rapport de tests de la preview](test-report-preview-seal.md).

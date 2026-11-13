@@ -6,9 +6,11 @@
 > cannot afford to lose or to see leaked.
 
 Personal memory stays exactly as it is: `MNEMOS_SECRET`, Argon2id, XChaCha20-Poly1305
-blobs, your owned `MemoryIndex`, Walrus. The sharing lane is a separate path, compiled
-only with the `seal` cargo feature. It never writes the MemoryIndex, the local store or
-`config.json`.
+blobs, your owned `MemoryIndex`, Walrus. The sharing lane is a separate path with two
+implementations: the native core, compiled only with the `seal` cargo feature, and a
+Python one on the sui-seal-client v0.2.0 Python bindings (both BETA, see
+[Two implementations](#two-implementations-beta)). It never writes the MemoryIndex, the
+local store or `config.json`.
 
 ## What it does
 
@@ -39,7 +41,8 @@ shared password:
 | Seal key servers (`--committee`, BETA) | Mysten testnet committee `0xb012378c9f3799fb5b1a7083da74a4069e3c3f1c93de0b27212a5799ce1e1e98`, 3-of-5 behind `https://seal-aggregator-testnet.mystenlabs.com` |
 
 The native core pins `sui-seal-client` by commit to the `v0.2.0` tag
-(`da579f64223ff3f7a83897272937cfc4d2d55153`). `move/SharedSpace` still depends on the
+(`da579f64223ff3f7a83897272937cfc4d2d55153`), and `scripts/build_seal_py.sh` builds the
+Python bindings from that same commit. `move/SharedSpace` still depends on the
 allowlist at `f4ffa2f`, the commit the Space package was built and published from; the
 allowlist Move sources are byte-for-byte identical in `v0.2.0`. The published package
 links to `0xe10f…7f1b` version 1.
@@ -99,18 +102,40 @@ Settings are validated before any transaction; an impossible threshold is refuse
 `share settings: …`.
 
 **Wrong owner.** If key servers answer that the approval used an object owned by another
-address (`Error::is_wrong_owner` in sui-seal-client), `pull` marks the entries
+address (`Error::is_wrong_owner` in sui-seal-client, `WrongOwnerError` in its Python
+bindings), `pull` marks the entries
 `wrong_owner`, does not retry them, and exits with code 4. Allowlist spaces only use the
 shared allowlist object, so this should not happen; it would point at a wrong space or
 allowlist id.
 
-## Commands
+## Two implementations (BETA)
 
-Build the native core with the feature:
+The lane exists twice, with the same commands, the same on-chain calls, the same
+`share.json` and the same encrypted entry format:
+
+| Lane | Built from | Selected when |
+| --- | --- | --- |
+| native (Rust) | `native/src/share.rs`, `seal` cargo feature | default when the core has the `seal` feature; forced with `MNEMOS_BACKEND=rust` |
+| Python | `mnemos/py_share.py` on the sui-seal-client v0.2.0 Python bindings | `MNEMOS_BACKEND=python`, or automatically when the core lacks `seal` |
+
+Members of one space can use different lanes: an entry written by one is read by the
+other, and a space created by one is administered by the other (the coop end-to-end run
+asserts every direction). Both lanes print the same JSON for the same state.
+
+Build one or both:
 
 ```sh
-MNEMOS_FEATURES=seal scripts/build_core.sh
+MNEMOS_FEATURES=seal scripts/build_core.sh   # native lane
+scripts/build_seal_py.sh                       # Python lane (needs Rust and maturin)
 ```
+
+`scripts/build_seal_py.sh` clones sui-seal-client, checks out the pinned `v0.2.0` commit
+`da579f64223ff3f7a83897272937cfc4d2d55153` (and verifies it), builds `python/` with
+`maturin build --release --locked` and installs the wheel into `MNEMOS_PYTHON`. Without
+the bindings, `MNEMOS_BACKEND=python` makes `share` refuse with a message naming the
+script, before reading any key or touching the profile.
+
+## Commands
 
 The commands are under `hermes mnemos-sui share`. The same code runs outside Hermes with
 `python -m mnemos.share --home <HERMES_HOME> …`. Every command prints JSON.
@@ -128,8 +153,8 @@ The commands are under `hermes mnemos-sui share`. The same code runs outside Her
 | `share status` | anyone | Epoch, number of entries per epoch |
 
 **Signer.** `MNEMOS_SHARE_KEY_FILE` (or `--key-file`) points to a Sui key file
-(suiprivkey, keystore base64 or 32-byte hex). The file is read, passed to the native
-core and never printed. Without it the signer is the profile's own Mnemos Sui address
+(suiprivkey, keystore base64 or 32-byte hex). The file is read, passed to the sharing
+lane and never printed. Without it the signer is the profile's own Mnemos Sui address
 (derived from `MNEMOS_SECRET`). Session keys and fetched keys stay in memory only.
 
 **Gas.** `create`, `add`, `remove` and `push` are Sui transactions paid by the signer.
@@ -140,9 +165,10 @@ path. Transactions that abort on chain are reported as errors.
 
 ## Limits of this preview
 
-- **Rust only.** The Python backend has no Seal implementation; with
-  `MNEMOS_BACKEND=python` or a core built without `seal`, `share` refuses with a clear
-  message. Personal memory works with both backends, as before.
+- **Two lanes, one format.** The Python lane needs the bindings built by
+  `scripts/build_seal_py.sh` (Rust toolchain and maturin); they are not on PyPI. Without
+  the bindings and without a `seal` core, `share` refuses with a clear message. Personal
+  memory works with both backends, as before.
 - Entries are plain text items, not full snapshots, and are not merged into personal
   memory: they live in the space and in the per-space cache.
 - The Space keeps references in a vector inside one object (Sui object size limit,
@@ -167,22 +193,30 @@ This roadmap is indicative only: no dates, no commitments, and the order may cha
    reads. Next: failover between server sets, permissioned servers.
 3. **More access policies:** subscription and time-limited access exist in
    sui-seal-client v0.2.0; wiring them into spaces is next.
-4. **Python backend sharing** through the sui-seal-client v0.2.0 Python bindings.
+4. **Python backend sharing (this branch, BETA):** done through the sui-seal-client
+   v0.2.0 Python bindings, interoperable with the native lane. Next: installable bindings
+   (wheels) instead of a local build.
 5. **crates.io publication** once Mysten publishes `seal-sdk` and `crypto`.
 6. **Security review** of the lane and of the Move packages.
 7. **Then mainnet**, only after the review.
 
 ## Tests
 
-- `cargo test --release --features seal`: the 8 existing tests and 8 for this lane
+- `cargo test --release --features seal`: the 8 existing tests and 8 for the native lane
   (key id layout, config validation, key server profiles, refused settings, header
   server sets, fetch error classification including wrong owner, Space parsing, entry
   format).
 - `move/SharedSpace`: 7 Move tests (`sui move test`).
-- `tests/test_share.py`: 13 offline tests (refusal on the Python backend, config
-  isolation, cache, CLI wiring, key server flags and per-space settings, settings
-  refused before any transaction, signer derivation, key file never printed).
+- `tests/test_share.py`: 57 offline checks (lane selection, refusal without the
+  bindings, config isolation, cache, CLI wiring, key server flags and per-space
+  settings; on each lane: settings refused before any transaction, signer derivation,
+  key file never printed; parity: both lanes accept and refuse the same 34 settings with
+  the same message and derive the same signers; the Python lane against the native unit
+  vectors, the exact entry bytes, and an offline encrypt/decrypt with in-process key
+  servers).
 - `scripts/e2e_coop.sh`: the testnet scenario above, a committee-backed space, a 1-of-2
-  space, a re-read of an earlier run's space, with A's personal MemoryIndex created,
+  space, a space created by the Python lane with entries crossing the two lanes in both
+  directions (removal and epoch through the Python lane, Python entries in the committee
+  and 1-of-2 spaces), a re-read of an earlier run's space on both lanes, with A's personal MemoryIndex created,
   restored and verified around it. See the
   [preview test report](test-report-preview-seal.md).
