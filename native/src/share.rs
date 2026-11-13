@@ -53,7 +53,8 @@ impl ShareConfig {
             value.get(key).and_then(Value::as_str).filter(|item| !item.is_empty()).unwrap_or(default).to_string()
         };
         let seal_package = Address::from_str(&text("seal_package", DEFAULT_SEAL_PACKAGE)).context("seal_package")?;
-        let space_package = Address::from_str(&text("space_package", DEFAULT_SPACE_PACKAGE)).context("space_package")?;
+        let space_package =
+            Address::from_str(&text("space_package", DEFAULT_SPACE_PACKAGE)).context("space_package")?;
         let defaults = SealConfig::testnet();
         let key_servers = match value.get("key_servers").and_then(Value::as_array) {
             Some(items) if !items.is_empty() => items
@@ -354,9 +355,8 @@ impl Share {
                 .encrypt(self.share.seal_package, &id, &plaintext)
                 .map_err(|err| anyhow!("seal encrypt: {err}"))?;
             let digest: [u8; 32] = Sha256::digest(&ciphertext).into();
-            let blob_id = self
-                .runtime
-                .block_on(engine::walrus_put(&self.cfg.walrus_publisher, &ciphertext, self.cfg.epochs))?;
+            let blob_id =
+                self.runtime.block_on(engine::walrus_put(&self.cfg.walrus_publisher, &ciphertext, self.cfg.epochs))?;
             prepared.push((blob_id, id, digest));
         }
         let space_addr = Address::from_str(space).context("space id")?;
@@ -396,16 +396,20 @@ impl Share {
         Ok(json!({"digest": digest, "epoch": epoch, "entries": published}))
     }
 
-    fn fetch(&self, client: &SealClient, list_arg: &ApprovalArg, ids: &[Vec<u8>]) -> std::result::Result<DerivedKeys, sui_seal_client::Error> {
+    fn fetch(
+        &self,
+        client: &SealClient,
+        list_arg: &ApprovalArg,
+        ids: &[Vec<u8>],
+    ) -> std::result::Result<DerivedKeys, sui_seal_client::Error> {
         let mut approval = ApprovalTx::new(self.share.seal_package);
         for id in ids {
             approval = approval.call("allowlist", "seal_approve", id, vec![list_arg.clone()])?;
         }
         let mut slot = self.session.lock().unwrap_or_else(|err| err.into_inner());
         if slot.as_ref().is_none_or(SessionKey::is_expired) {
-            let session = self
-                .runtime
-                .block_on(client.session_key(self.share.seal_package, SESSION_TTL_MIN, &self.signer))?;
+            let session =
+                self.runtime.block_on(client.session_key(self.share.seal_package, SESSION_TTL_MIN, &self.signer))?;
             *slot = Some(session);
         }
         let session = slot.as_ref().expect("session set above");
@@ -426,7 +430,8 @@ impl Share {
             if digest != entry.blob_sha256 {
                 return Err(anyhow!("entry {}: Walrus blob {} does not match its sha256", entry.index, entry.blob_id));
             }
-            let info = sui_seal_client::parse_encrypted_object(&blob).map_err(|err| anyhow!("entry {}: {err}", entry.index))?;
+            let info = sui_seal_client::parse_encrypted_object(&blob)
+                .map_err(|err| anyhow!("entry {}: {err}", entry.index))?;
             if info.package_id != self.share.seal_package || info.id != entry.key_id {
                 return Err(anyhow!("entry {}: ciphertext header does not match the published key id", entry.index));
             }
@@ -440,15 +445,15 @@ impl Share {
                 state
                     .entries
                     .iter()
-                    .filter(|entry| keys.servers_for(&self.share.seal_package, &entry.key_id) < client.threshold() as usize)
+                    .filter(|entry| {
+                        keys.servers_for(&self.share.seal_package, &entry.key_id) < client.threshold() as usize
+                    })
                     .map(|entry| entry.index)
                     .collect()
             };
             if !missing.is_empty() {
-                let list_arg = self
-                    .runtime
-                    .block_on(client.shared_object(list))
-                    .map_err(|err| anyhow!("allowlist: {err}"))?;
+                let list_arg =
+                    self.runtime.block_on(client.shared_object(list)).map_err(|err| anyhow!("allowlist: {err}"))?;
                 let ids: Vec<Vec<u8>> = missing.iter().map(|i| state.entries[*i].key_id.clone()).collect();
                 match self.fetch(&client, &list_arg, &ids) {
                     Ok(fetched) => self.keys.lock().unwrap_or_else(|err| err.into_inner()).extend(fetched),
@@ -485,12 +490,18 @@ impl Share {
             } else if keys.servers_for(&self.share.seal_package, &entry.key_id) < client.threshold() as usize {
                 "no_cached_key"
             } else {
-                match client.decrypt(blob, &keys).map_err(|err| anyhow!("{err}")).and_then(|plain| parse_entry_plaintext(&plain)) {
+                match client
+                    .decrypt(blob, &keys)
+                    .map_err(|err| anyhow!("{err}"))
+                    .and_then(|plain| parse_entry_plaintext(&plain))
+                {
                     Ok(value) => {
                         row["text"] = value["text"].clone();
                         row["kind"] = value["kind"].clone();
                         row["ts"] = value["ts"].clone();
-                        if value["author"].as_str().map(engine::norm_address).transpose()?.as_deref() != Some(entry.author.as_str()) {
+                        if value["author"].as_str().map(engine::norm_address).transpose()?.as_deref()
+                            != Some(entry.author.as_str())
+                        {
                             row["error"] = json!("author in plaintext does not match the publisher");
                             "error"
                         } else {
@@ -548,7 +559,11 @@ fn now_ms() -> i64 {
 }
 
 /// Like `engine::execute_tx_effects`, but fails when the transaction aborted.
-async fn execute_checked(rpc: String, signer: Ed25519PrivateKey, tx: TransactionBuilder) -> Result<(String, Vec<(String, String)>)> {
+async fn execute_checked(
+    rpc: String,
+    signer: Ed25519PrivateKey,
+    tx: TransactionBuilder,
+) -> Result<(String, Vec<(String, String)>)> {
     let mut client = sui_rpc::Client::new(&rpc).map_err(|err| anyhow!("sui rpc: {err}"))?;
     engine::check_rpc(&rpc).await?;
     let built = tx.build(&mut client).await.map_err(|err| anyhow!("transaction build: {err}"))?;

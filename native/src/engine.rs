@@ -3,19 +3,19 @@
 use std::time::Duration;
 
 use anyhow::{anyhow, Context, Result};
-use base64::Engine as _;
 use argon2::{Algorithm, Argon2, Params, Version};
+use base64::Engine as _;
 use rusqlite::{params, Connection};
 use serde_json::{json, Value};
 use sui_crypto::ed25519::Ed25519PrivateKey;
 use sui_crypto::SuiSigner;
-use sui_sdk_types::{Address, Identifier};
 use sui_rpc::field::{FieldMask, FieldMaskUtil};
+use sui_sdk_types::{Address, Identifier};
 use sui_transaction_builder::{Function, ObjectInput, TransactionBuilder};
 
 use crate::chain::{
-    self, canonical_plaintext, content_hash, open_blob, random_nonce, seal, sha256, sign_hash, verify_hash,
-    Entry, Keys, GENESIS_PREV,
+    self, canonical_plaintext, content_hash, open_blob, random_nonce, seal, sha256, sign_hash, verify_hash, Entry,
+    Keys, GENESIS_PREV,
 };
 
 const LEGACY_READ_ONLY: &str = "MemoryIndex uses the pre-0.2.2 key derivation and is read-only: restore and history still work, new writes need a fresh index (`hermes mnemos init`)";
@@ -116,15 +116,7 @@ impl Engine {
             );
             ",
         )?;
-        Ok(Self {
-            db,
-            keys,
-            legacy_pubkey: legacy.pubkey,
-            legacy_enc_key: legacy.enc_key,
-            sui_key,
-            address,
-            cfg,
-        })
+        Ok(Self { db, keys, legacy_pubkey: legacy.pubkey, legacy_enc_key: legacy.enc_key, sui_key, address, cfg })
     }
 
     pub fn pubkey_hex(&self) -> String {
@@ -163,10 +155,8 @@ impl Engine {
     pub fn recall(&self, query: &str, limit: usize) -> Value {
         let limit = limit.clamp(1, 20);
         let tokens: Vec<String> = tokenize(query).into_iter().filter(|tok| tok.len() >= 4).collect();
-        let mut stmt = self
-            .db
-            .prepare("SELECT id, session_id, kind, text, ts FROM entries ORDER BY ts DESC LIMIT 400")
-            .unwrap();
+        let mut stmt =
+            self.db.prepare("SELECT id, session_id, kind, text, ts FROM entries ORDER BY ts DESC LIMIT 400").unwrap();
         let rows = stmt
             .query_map([], |row| {
                 Ok(Entry {
@@ -181,11 +171,8 @@ impl Engine {
         let mut hits = Vec::new();
         for row in rows.flatten() {
             let lowered = row.text.to_lowercase();
-            let score = if tokens.is_empty() {
-                0
-            } else {
-                tokens.iter().filter(|tok| lowered.contains(tok.as_str())).count()
-            };
+            let score =
+                if tokens.is_empty() { 0 } else { tokens.iter().filter(|tok| lowered.contains(tok.as_str())).count() };
             if !tokens.is_empty() && score == 0 {
                 continue;
             }
@@ -293,7 +280,10 @@ impl Engine {
                     "digest": digest,
                 }));
             }
-            self.db.execute("DELETE FROM snapshots WHERE content_hash = ?1 AND synced = 0", params![pending.content_hash])?;
+            self.db.execute(
+                "DELETE FROM snapshots WHERE content_hash = ?1 AND synced = 0",
+                params![pending.content_hash],
+            )?;
         }
         let version = chain.version + 1;
         let nonce = random_nonce()?;
@@ -342,11 +332,7 @@ impl Engine {
     // Pre-existing loop kept as is; the lint is style only (no behavior change).
     #[allow(clippy::explicit_counter_loop)]
     pub fn restore(&mut self, object_id: &str) -> Result<Value> {
-        let object_id = if object_id.is_empty() {
-            self.cfg.index_object_id.clone()
-        } else {
-            object_id.to_string()
-        };
+        let object_id = if object_id.is_empty() { self.cfg.index_object_id.clone() } else { object_id.to_string() };
         if object_id.is_empty() {
             return Err(anyhow!("index object id is required"));
         }
@@ -444,11 +430,8 @@ impl Engine {
 
     pub fn doctor(&self) -> Result<Value> {
         let stored: i64 = self.db.query_row("SELECT COUNT(*) FROM entries", [], |row| row.get(0))?;
-        let pending: i64 = self.db.query_row(
-            "SELECT COUNT(*) FROM entries WHERE snapshot_hash IS NULL",
-            [],
-            |row| row.get(0),
-        )?;
+        let pending: i64 =
+            self.db.query_row("SELECT COUNT(*) FROM entries WHERE snapshot_hash IS NULL", [], |row| row.get(0))?;
         let mut checks = vec![
             json!({"name": "backend", "ok": true, "detail": "rust"}),
             json!({"name": "signing_key", "ok": true, "detail": self.pubkey_hex()}),
@@ -456,11 +439,18 @@ impl Engine {
             json!({"name": "chain_writes", "ok": true, "detail": "native core"}),
             json!({"name": "sui_address", "ok": true, "detail": self.sui_address()}),
         ];
-        checks.push(block_on(probe_url("walrus_publisher", &format!("{}/v1/api", self.cfg.walrus_publisher.trim_end_matches('/')))));
+        checks.push(block_on(probe_url(
+            "walrus_publisher",
+            &format!("{}/v1/api", self.cfg.walrus_publisher.trim_end_matches('/')),
+        )));
         checks.push(block_on(probe_graphql(&self.cfg.graphql_url)));
         checks.push(match block_on(check_graphql_fresh(&self.cfg)) {
-            Ok(lag) => json!({"name": "graphql_fresh", "ok": true, "detail": format!("{lag} checkpoints behind the fullnode")}),
-            Err(err) => json!({"name": "graphql_fresh", "ok": false, "detail": format!("{err} (reads use the fullnode)")}),
+            Ok(lag) => {
+                json!({"name": "graphql_fresh", "ok": true, "detail": format!("{lag} checkpoints behind the fullnode")})
+            }
+            Err(err) => {
+                json!({"name": "graphql_fresh", "ok": false, "detail": format!("{err} (reads use the fullnode)")})
+            }
         });
         if self.cfg.index_object_id.is_empty() {
             checks.push(json!({"name": "index_object", "ok": false, "detail": "unset"}));
@@ -537,7 +527,13 @@ impl Engine {
         }
         if self.cfg.index_object_id.is_empty() {
             eprintln!("mnemos: creating MemoryIndex");
-            let index_id = block_on(create_index(&self.cfg, &self.sui_key, self.address, &self.cfg.package_id, &self.keys.pubkey))?;
+            let index_id = block_on(create_index(
+                &self.cfg,
+                &self.sui_key,
+                self.address,
+                &self.cfg.package_id,
+                &self.keys.pubkey,
+            ))?;
             self.cfg.index_object_id = index_id;
         }
         Ok(json!({
@@ -619,11 +615,9 @@ impl Engine {
 
     fn adopt_committed(&mut self, chain: &Head) -> Result<()> {
         let head = hex::encode(chain.head);
-        let exists: i64 = self.db.query_row(
-            "SELECT COUNT(*) FROM snapshots WHERE content_hash = ?1",
-            params![head],
-            |row| row.get(0),
-        )?;
+        let exists: i64 =
+            self.db
+                .query_row("SELECT COUNT(*) FROM snapshots WHERE content_hash = ?1", params![head], |row| row.get(0))?;
         if exists == 0 {
             return Ok(());
         }
@@ -634,10 +628,7 @@ impl Engine {
     fn mark_synced(&mut self, content_hash: &str, entries: &[Entry]) -> Result<()> {
         self.db.execute("UPDATE snapshots SET synced = 1 WHERE content_hash = ?1", params![content_hash])?;
         for entry in entries {
-            self.db.execute(
-                "UPDATE entries SET snapshot_hash = ?1 WHERE id = ?2",
-                params![content_hash, entry.id],
-            )?;
+            self.db.execute("UPDATE entries SET snapshot_hash = ?1 WHERE id = ?2", params![content_hash, entry.id])?;
         }
         Ok(())
     }
@@ -769,17 +760,15 @@ pub(crate) fn block_on<F: std::future::Future>(future: F) -> F::Output {
 }
 
 fn http_client(timeout: Duration) -> reqwest::Client {
-    reqwest::Client::builder()
-        .timeout(timeout)
-        .connect_timeout(Duration::from_secs(10))
-        .build()
-        .expect("http client")
+    reqwest::Client::builder().timeout(timeout).connect_timeout(Duration::from_secs(10)).build().expect("http client")
 }
 
 async fn probe_url(name: &str, url: &str) -> Value {
     let client = http_client(Duration::from_secs(8));
     match client.get(url).send().await {
-        Ok(response) => json!({"name": name, "ok": response.status().is_success() || response.status().as_u16() < 500, "detail": format!("HTTP {}", response.status())}),
+        Ok(response) => {
+            json!({"name": name, "ok": response.status().is_success() || response.status().as_u16() < 500, "detail": format!("HTTP {}", response.status())})
+        }
         Err(err) => json!({"name": name, "ok": false, "detail": err.to_string()}),
     }
 }
@@ -866,7 +855,9 @@ fn blob_id_of(payload: &Value) -> Option<String> {
             return Some(id.to_string());
         }
     }
-    payload["alreadyCertified"]["blobId"].as_str().map(str::to_string)
+    payload["alreadyCertified"]["blobId"]
+        .as_str()
+        .map(str::to_string)
         .or_else(|| payload["blobId"].as_str().map(str::to_string))
 }
 
@@ -926,7 +917,11 @@ fn fixed32(bytes: &[u8]) -> Result<[u8; 32]> {
 }
 
 pub(crate) fn as_u64(value: &Value) -> u64 {
-    value.as_u64().or_else(|| value.as_i64().map(|item| item as u64)).or_else(|| value.as_str().and_then(|text| text.parse().ok())).unwrap_or(0)
+    value
+        .as_u64()
+        .or_else(|| value.as_i64().map(|item| item as u64))
+        .or_else(|| value.as_str().and_then(|text| text.parse().ok()))
+        .unwrap_or(0)
 }
 
 pub(crate) fn as_bytes(value: &Value) -> Result<Vec<u8>> {
@@ -986,7 +981,9 @@ async fn fund_if_needed(cfg: &Config, address: Address, minimum: u64) -> Result<
             Ok(digest) => {
                 tokio::time::sleep(Duration::from_secs(2)).await;
                 let balance = sui_balance(cfg, address).await.unwrap_or(0);
-                return Ok(json!({"funded": true, "digest": digest, "balance": balance.to_string(), "sui_address": address.to_string()}));
+                return Ok(
+                    json!({"funded": true, "digest": digest, "balance": balance.to_string(), "sui_address": address.to_string()}),
+                );
             }
             Err(err) => last = err.to_string(),
         }
@@ -999,11 +996,7 @@ async fn fund_if_needed(cfg: &Config, address: Address, minimum: u64) -> Result<
 
 async fn request_faucet(faucet_url: &str, address: Address) -> Result<String> {
     let client = http_client(Duration::from_secs(30));
-    let challenge_url = format!(
-        "{}/v3/challenge?recipient={}",
-        faucet_url.trim_end_matches('/'),
-        address
-    );
+    let challenge_url = format!("{}/v3/challenge?recipient={}", faucet_url.trim_end_matches('/'), address);
     let challenge = client.get(challenge_url).send().await?.error_for_status()?.json::<Value>().await?;
     let (nonce, hash_hex) = solve_faucet(&challenge)?;
     let body = json!({
@@ -1012,11 +1005,7 @@ async fn request_faucet(faucet_url: &str, address: Address) -> Result<String> {
         "nonce": nonce.to_string(),
         "hashHex": hash_hex,
     });
-    let response = client
-        .post(format!("{}/v3/gas", faucet_url.trim_end_matches('/')))
-        .json(&body)
-        .send()
-        .await?;
+    let response = client.post(format!("{}/v3/gas", faucet_url.trim_end_matches('/'))).json(&body).send().await?;
     let status = response.status();
     let text = response.text().await.unwrap_or_default();
     if !status.is_success() {
@@ -1051,7 +1040,9 @@ fn solve_faucet(challenge: &Value) -> Result<(u64, String)> {
     let faucet_address = challenge["faucetAddress"].as_str().unwrap_or("");
     let recipient = challenge["recipient"].as_str().unwrap_or("");
     while started.elapsed() < Duration::from_secs(50) {
-        let preimage = format!("{domain}\n{chain_id}\n{checkpoint}\n{digest}\n{random_bytes}\n{faucet_address}\n{recipient}\n{nonce}");
+        let preimage = format!(
+            "{domain}\n{chain_id}\n{checkpoint}\n{digest}\n{random_bytes}\n{faucet_address}\n{recipient}\n{nonce}"
+        );
         let mut hash = vec![0u8; hash_len];
         argon
             .hash_password_into(preimage.as_bytes(), salt.as_bytes(), &mut hash)
@@ -1098,7 +1089,11 @@ async fn execute_tx(rpc: &str, signer: &Ed25519PrivateKey, tx: TransactionBuilde
 }
 
 /// Sign and execute; return the digest and the (id, type) of every created object.
-pub(crate) async fn execute_tx_effects(rpc: &str, signer: &Ed25519PrivateKey, tx: TransactionBuilder) -> Result<(String, Vec<(String, String)>)> {
+pub(crate) async fn execute_tx_effects(
+    rpc: &str,
+    signer: &Ed25519PrivateKey,
+    tx: TransactionBuilder,
+) -> Result<(String, Vec<(String, String)>)> {
     let mut client = sui_rpc::Client::new(rpc).map_err(|err| anyhow!("sui rpc: {err}"))?;
     require_testnet(&mut client, rpc).await?;
     let built = tx.build(&mut client).await.map_err(|err| anyhow!("transaction build: {err}"))?;
@@ -1124,7 +1119,11 @@ pub(crate) async fn execute_tx_effects(rpc: &str, signer: &Ed25519PrivateKey, tx
     Ok((digest, created))
 }
 
-pub(crate) fn one_created(digest: &str, created: &[(String, String)], matches: impl Fn(&str) -> bool) -> Result<Option<String>> {
+pub(crate) fn one_created(
+    digest: &str,
+    created: &[(String, String)],
+    matches: impl Fn(&str) -> bool,
+) -> Result<Option<String>> {
     let found: Vec<&String> = created.iter().filter(|(_, kind)| matches(kind)).map(|(id, _)| id).collect();
     match found.len() {
         0 => Ok(None),
@@ -1133,7 +1132,12 @@ pub(crate) fn one_created(digest: &str, created: &[(String, String)], matches: i
     }
 }
 
-async fn publish_package(cfg: &Config, signer: &Ed25519PrivateKey, sender: Address, modules_json: &str) -> Result<String> {
+async fn publish_package(
+    cfg: &Config,
+    signer: &Ed25519PrivateKey,
+    sender: Address,
+    modules_json: &str,
+) -> Result<String> {
     let parsed: Value = serde_json::from_str(modules_json).context("bytecode json")?;
     let modules = parsed["modules"].as_array().context("modules")?;
     let mut bytecode = Vec::new();
@@ -1156,10 +1160,18 @@ async fn publish_package(cfg: &Config, signer: &Ed25519PrivateKey, sender: Addre
     if let Some(package_id) = one_created(&digest, &created, |kind| kind == "package")? {
         return Ok(package_id);
     }
-    wait_for_package(cfg, sender).await.with_context(|| format!("published in {digest} but the UpgradeCap was not visible"))
+    wait_for_package(cfg, sender)
+        .await
+        .with_context(|| format!("published in {digest} but the UpgradeCap was not visible"))
 }
 
-async fn create_index(cfg: &Config, signer: &Ed25519PrivateKey, sender: Address, package_id: &str, pubkey: &[u8; 32]) -> Result<String> {
+async fn create_index(
+    cfg: &Config,
+    signer: &Ed25519PrivateKey,
+    sender: Address,
+    package_id: &str,
+    pubkey: &[u8; 32],
+) -> Result<String> {
     let package: Address = package_id.parse().context("package id")?;
     let mut tx = TransactionBuilder::new();
     tx.set_sender(sender);
@@ -1264,10 +1276,14 @@ fn proto_json(value: &prost_types::Value) -> Value {
     match &value.kind {
         None | Some(Kind::NullValue(_)) => Value::Null,
         Some(Kind::BoolValue(flag)) => Value::Bool(*flag),
-        Some(Kind::NumberValue(number)) => serde_json::Number::from_f64(*number).map(Value::Number).unwrap_or(Value::Null),
+        Some(Kind::NumberValue(number)) => {
+            serde_json::Number::from_f64(*number).map(Value::Number).unwrap_or(Value::Null)
+        }
         Some(Kind::StringValue(text)) => Value::String(text.clone()),
         Some(Kind::ListValue(list)) => Value::Array(list.values.iter().map(proto_json).collect()),
-        Some(Kind::StructValue(map)) => Value::Object(map.fields.iter().map(|(key, item)| (key.clone(), proto_json(item))).collect()),
+        Some(Kind::StructValue(map)) => {
+            Value::Object(map.fields.iter().map(|(key, item)| (key.clone(), proto_json(item))).collect())
+        }
     }
 }
 
@@ -1293,7 +1309,9 @@ async fn grpc_object(cfg: &Config, object_id: &str) -> std::result::Result<Chain
         Err(status) if status.code() == tonic::Code::NotFound => {
             return Err(ReadFail::NotFound(format!("Sui object {object_id} was not found")))
         }
-        Err(status) => return Err(ReadFail::Other(anyhow!("fullnode GetObject: {:?} {}", status.code(), status.message()))),
+        Err(status) => {
+            return Err(ReadFail::Other(anyhow!("fullnode GetObject: {:?} {}", status.code(), status.message())))
+        }
     };
     let object = reply.object.ok_or_else(|| ReadFail::Other(anyhow!("fullnode returned no object")))?;
     let returned = object.object_id.clone().unwrap_or_default();
@@ -1320,7 +1338,9 @@ async fn grpc_owned(cfg: &Config, owner: Address, type_name: &str) -> std::resul
         let reply = tokio::time::timeout(Duration::from_secs(20), client.state_client().list_owned_objects(request))
             .await
             .map_err(|_| ReadFail::Other(anyhow!("fullnode ListOwnedObjects timed out")))?
-            .map_err(|status| ReadFail::Other(anyhow!("fullnode ListOwnedObjects: {:?} {}", status.code(), status.message())))?
+            .map_err(|status| {
+                ReadFail::Other(anyhow!("fullnode ListOwnedObjects: {:?} {}", status.code(), status.message()))
+            })?
             .into_inner();
         out.extend(reply.objects.into_iter().map(|object| chain_object(object, "grpc")));
         match reply.next_page_token {
@@ -1432,7 +1452,8 @@ async fn read_owned(cfg: &Config, owner: Address, type_name: &str) -> Result<Vec
                   }
                 }
             "#;
-            let value = graphql(&cfg.graphql_url, query, json!({"owner": owner.to_string(), "type": type_name})).await?;
+            let value =
+                graphql(&cfg.graphql_url, query, json!({"owner": owner.to_string(), "type": type_name})).await?;
             Ok(value["data"]["objects"]["nodes"]
                 .as_array()
                 .cloned()
@@ -1468,7 +1489,10 @@ mod tests {
         let text = |s: &str| PValue { kind: Some(Kind::StringValue(s.into())) };
         let mut fields = std::collections::BTreeMap::new();
         fields.insert("version".to_string(), text("2"));
-        fields.insert("snapshots".to_string(), PValue { kind: Some(Kind::ListValue(ListValue { values: vec![text("AA==")] })) });
+        fields.insert(
+            "snapshots".to_string(),
+            PValue { kind: Some(Kind::ListValue(ListValue { values: vec![text("AA==")] })) },
+        );
         let value = PValue { kind: Some(Kind::StructValue(Struct { fields })) };
         assert_eq!(proto_json(&value), json!({"version": "2", "snapshots": ["AA=="]}));
     }
@@ -1485,7 +1509,8 @@ mod tests {
     fn not_found_and_chain_failures_never_fall_back() {
         let not_found = block_on(fallback_allowed(&cfg("auto"), "read", ReadFail::NotFound("gone".into())));
         assert_eq!(not_found.unwrap_err().to_string(), "gone");
-        let chain = block_on(fallback_allowed(&cfg("auto"), "read", ReadFail::Chain(anyhow!("refusing to sign: mainnet"))));
+        let chain =
+            block_on(fallback_allowed(&cfg("auto"), "read", ReadFail::Chain(anyhow!("refusing to sign: mainnet"))));
         assert!(chain.unwrap_err().to_string().contains("refusing to sign"));
     }
 

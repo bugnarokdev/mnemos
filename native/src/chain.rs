@@ -38,8 +38,7 @@ pub const KDF_PARALLELISM: u32 = 1;
 fn hkdf32(ikm: &[u8], salt: &[u8], info: &[u8]) -> Result<[u8; 32]> {
     let hk = Hkdf::<Sha256>::new(Some(salt), ikm);
     let mut out = [0u8; 32];
-    hk.expand(info, &mut out)
-        .map_err(|_| anyhow!("hkdf expand failed"))?;
+    hk.expand(info, &mut out).map_err(|_| anyhow!("hkdf expand failed"))?;
     Ok(out)
 }
 
@@ -58,9 +57,7 @@ pub fn master_key(secret: &str) -> Result<[u8; 32]> {
         .map_err(|err| anyhow!("argon2 params: {err}"))?;
     let argon = Argon2::new(Algorithm::Argon2id, Version::V0x13, params);
     let mut out = [0u8; 32];
-    argon
-        .hash_password_into(secret.as_bytes(), KDF_SALT, &mut out)
-        .map_err(|err| anyhow!("argon2id: {err}"))?;
+    argon.hash_password_into(secret.as_bytes(), KDF_SALT, &mut out).map_err(|err| anyhow!("argon2id: {err}"))?;
     master_cache().lock().unwrap_or_else(|err| err.into_inner()).insert(tag, out);
     Ok(out)
 }
@@ -68,12 +65,7 @@ pub fn master_key(secret: &str) -> Result<[u8; 32]> {
 fn keys_from(enc_key: [u8; 32], sign_seed: [u8; 32], sui_seed: [u8; 32]) -> Keys {
     let sign_key = SigningKey::from_bytes(&sign_seed);
     let pubkey = sign_key.verifying_key().to_bytes();
-    Keys {
-        enc_key,
-        sign_key,
-        pubkey,
-        sui_seed,
-    }
+    Keys { enc_key, sign_key, pubkey, sui_seed }
 }
 
 /// Current keys: Argon2id over the passphrase, then one HKDF-SHA256 per purpose.
@@ -130,13 +122,7 @@ pub fn content_preimage(
     out
 }
 
-pub fn content_hash(
-    prev: &[u8; 32],
-    blob_sha: &[u8; 32],
-    version: u64,
-    session_id: &str,
-    blob_id: &str,
-) -> [u8; 32] {
+pub fn content_hash(prev: &[u8; 32], blob_sha: &[u8; 32], version: u64, session_id: &str, blob_id: &str) -> [u8; 32] {
     sha256(&content_preimage(prev, blob_sha, version, session_id, blob_id))
 }
 
@@ -162,13 +148,7 @@ pub fn verify_hash(pubkey: &[u8; 32], content: &[u8; 32], signature: &[u8; 64]) 
 pub fn seal(enc_key: &[u8; 32], plaintext: &[u8], nonce: &[u8; 24]) -> Result<Vec<u8>> {
     let cipher = XChaCha20Poly1305::new(enc_key.into());
     let body = cipher
-        .encrypt(
-            XNonce::from_slice(nonce),
-            Payload {
-                msg: plaintext,
-                aad: BLOB_AAD,
-            },
-        )
+        .encrypt(XNonce::from_slice(nonce), Payload { msg: plaintext, aad: BLOB_AAD })
         .map_err(|_| anyhow!("encrypt failed"))?;
     let mut out = Vec::with_capacity(4 + 1 + 24 + body.len());
     out.extend_from_slice(BLOB_MAGIC);
@@ -188,13 +168,7 @@ pub fn open_blob(enc_key: &[u8; 32], blob: &[u8]) -> Result<Vec<u8>> {
     let nonce: [u8; 24] = blob[5..29].try_into().unwrap();
     let cipher = XChaCha20Poly1305::new(enc_key.into());
     cipher
-        .decrypt(
-            XNonce::from_slice(&nonce),
-            Payload {
-                msg: &blob[29..],
-                aad: BLOB_AAD,
-            },
-        )
+        .decrypt(XNonce::from_slice(&nonce), Payload { msg: &blob[29..], aad: BLOB_AAD })
         .map_err(|_| anyhow!("decrypt failed"))
 }
 

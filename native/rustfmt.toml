@@ -1,0 +1,3 @@
+# Line width close to the existing style of the native core.
+max_width = 120
+use_small_heuristics = "Max"
