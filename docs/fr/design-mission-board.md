@@ -3,13 +3,15 @@
 > **BETA (testnet preview), conception uniquement.** Ce document décrit une fonctionnalité
 > future. Il n'existe aujourd'hui ni code, ni package Move publié, ni commande `board`.
 > Version v1 (phase P0) : les 13 questions ouvertes de la v0 sont tranchées, voir §18.
+> Correction v1 : un seul chef de projet (mainteneur) par tableau, rôle transmissible
+> en deux étapes (§4.5, décision C1).
 > Tout ce qui suit vise Sui testnet, Walrus testnet et les serveurs de clés Seal de testnet
 > de Mysten. Les formats, noms et coûts sont provisoires. Les coûts en gas sont des
 > **estimations**, pas des mesures.
 
 | | |
 | --- | --- |
-| Statut | design v1 (P0), questions ouvertes tranchées le 13 novembre 2026 ; aucune ligne de code avant le feu vert de P1 |
+| Statut | design v1 (P0), questions ouvertes tranchées le 13 novembre 2026, puis correction « chef de projet unique » le même jour ; aucune ligne de code avant le feu vert de P1 |
 | Branche | `preview/board`, partant de `preview/seal` `b3508ac` (Q1) ; `main` n'est pas concerné |
 | Base | Mnemos `preview/seal` `b3508ac` ; sui-seal-client `v0.2.0` (`da579f6`) |
 | Sources lues | `native/src/share.rs`, `mnemos/py_share.py`, `move/SharedSpace/sources/space.move`, `docs/en/preview-seal.md`, `docs/en/test-report-preview-seal.md` ; dans sui-seal-client : `move/allowlist`, `move/policies` (`timelock`, `private_data`, `subscription`) |
@@ -20,13 +22,15 @@
 ## 1. Résumé
 
 Un **tableau de missions** est un objet Sui partagé (`Board`) qui référence des missions,
-chacune étant un objet Sui partagé (`Mission`). Un mainteneur publie une mission avec un
+chacune étant un objet Sui partagé (`Mission`). Le **chef de projet** (mainteneur unique
+du tableau, celui qui définit les missions) publie une mission avec un
 brief chiffré par Seal. Un contributeur, humain ou agent Hermes, la **réserve** (claim)
 par une transaction : la réservation est exclusive et inscrite sur la chaîne. Tant que la
 réservation est active et non expirée, les serveurs de clés Seal acceptent de donner au
-réservataire, et à lui seul en plus des mainteneurs, les clés du brief de cette mission.
-Le contributeur livre un résultat chiffré, signé par sa transaction de livraison. Un
-mainteneur l'accepte ou le refuse. Une mission acceptée débloque les missions qui en
+réservataire, et à lui seul en plus du chef de projet, les clés du brief de cette mission.
+Le contributeur livre un résultat chiffré, signé par sa transaction de livraison. Le
+chef de projet l'accepte ou le refuse. Il peut transmettre le projet à un participant
+(typiquement un contributeur très actif), qui devient alors le nouveau chef de projet. Une mission acceptée débloque les missions qui en
 dépendent, et leurs réservataires peuvent alors lire le résultat livré. Une réservation
 expirée ne donne plus de clés, puis repasse à l'état ouvert. Chaque mission acceptée
 laisse un reçu non transférable, base d'une réputation vérifiable mais limitée. Les
@@ -47,10 +51,10 @@ tourner le contexte après chaque révocation ; il ne prétend pas faire plus.
 2. Une réservation exclusive sur la chaîne : deux contributeurs ne peuvent pas détenir la
    même mission en même temps ; l'ordre est fixé par le consensus Sui.
 3. Un contexte privé par mission : brief et notes chiffrés par Seal, accessibles aux
-   mainteneurs et au réservataire actif uniquement.
+   au chef de projet et au réservataire actif uniquement.
 4. Une livraison attribuable : le résultat est référencé sur la chaîne (blob Walrus,
    sha256, auteur, horodatage) par une transaction signée par le réservataire.
-5. Une validation humaine (ou par une adresse mainteneur) explicite : rien n'est accepté
+5. Une validation humaine (ou par l'adresse du chef de projet) explicite : rien n'est accepté
    automatiquement.
 6. Un graphe de dépendances (DAG) : une mission bloquée s'ouvre quand ses parents sont
    acceptés, et son réservataire peut lire les résultats des parents.
@@ -64,7 +68,9 @@ tourner le contexte après chaque révocation ; il ne prétend pas faire plus.
 
 - Pas de mainnet, pas de revue de sécurité faite à ce stade (elle est un prérequis du
   mainnet, voir la roadmap existante).
-- Pas d'arbitrage ni de résolution de litiges : le mainteneur décide seul.
+- Pas d'arbitrage ni de résolution de litiges : le chef de projet décide seul.
+- Pas de co-mainteneurs : un seul chef de projet par tableau ; le rôle se transmet, il ne
+  se partage pas (décision C1).
 - Pas de retrait des données déjà lues par un ancien réservataire (impossible avec Seal).
 - Pas de preuve de qualité du travail, ni d'identité réelle des contributeurs.
 - Pas de primes en SUI dans les premières phases (escrow esquissé en §11, phase tardive).
@@ -80,10 +86,11 @@ tourner le contexte après chaque révocation ; il ne prétend pas faire plus.
 
 | Acteur | Identité on-chain | Peut |
 | --- | --- | --- |
-| **Propriétaire du tableau** | adresse qui détient `BoardAdminCap` (adresse simple ou multisig Sui) | créer le tableau, ajouter/retirer des mainteneurs, changer les paramètres, geler le tableau |
-| **Mainteneur** | adresse inscrite dans `Board.maintainers` | publier, modifier tant que la mission est ouverte, prolonger, accepter, refuser, révoquer, annuler, déclarer des dépendances, republier le brief |
+| **Chef de projet (mainteneur)** | une seule adresse par tableau : `Board.lead`, qui détient la `BoardAdminCap` valide (`Board.admin_cap_id`) ; adresse simple ou multisig Sui. Au départ, le créateur du tableau | définir et publier les missions, modifier tant que la mission est ouverte, prolonger, accepter, refuser, révoquer, annuler, déclarer des dépendances, republier le brief, changer les paramètres, geler le tableau, proposer ou annuler la transmission du projet (§4.5) |
+| **Successeur désigné** | l'adresse de `Board.pending_lead`, pendant une transmission en cours | accepter la transmission et devenir chef de projet ; aucun autre droit avant l'acceptation |
 | **Contributeur humain** | une adresse Sui (clé `MNEMOS_SHARE_KEY_FILE` ou adresse Mnemos du profil) | réserver, travailler, livrer, abandonner |
 | **Contributeur agent** | adresse Sui propre à l'agent Hermes (une clé dédiée par agent recommandée) | les mêmes actions que l'humain, sous les garde-fous du §13 |
+| **Ancien chef de projet** | toute adresse qui a transmis le rôle | plus aucun droit de chef de projet ; participant normal (peut réserver ensuite, aux règles normales) |
 | **N'importe qui** | toute adresse | lire l'état public, déclencher `expire` sur une réservation échue, déclencher `unlock` d'une dépendance satisfaite |
 | **Serveurs de clés Seal** | `mysten-testnet-1/2` ou le comité Mysten, comme `share` | évaluer `seal_approve_*` par dry-run sur leur nœud et donner ou refuser les clés |
 
@@ -102,14 +109,16 @@ objet et sous les limites de calcul des dry-runs Seal.
 ### 4.1 Objets et structures
 
 ```move
-/// Objet partagé. Paramètres et registre des mainteneurs. Muté rarement :
-/// création de mission, gestion des mainteneurs, acceptation (réputation).
+/// Objet partagé. Paramètres et chef de projet. Muté rarement :
+/// création de mission, transmission du projet, acceptation (réputation).
 public struct Board has key {
     id: UID,
     version: u64,                       // garde de version (motif de subscription.move)
     name: String,                       // <= 64 octets
-    owner: address,                     // détenteur initial de BoardAdminCap (info)
-    maintainers: VecSet<address>,       // <= MAX_MAINTAINERS (16)
+    creator: address,                   // créateur du tableau (info, ne change jamais)
+    lead: address,                      // chef de projet actuel, seul mainteneur
+    admin_cap_id: ID,                   // seule BoardAdminCap valide, détenue par `lead`
+    pending_lead: Option<address>,      // transmission en cours (une seule à la fois)
     next_seq: u64,                      // numéro de mission, croissant
     frozen: bool,                       // plus de nouvelles missions ni de claims
     params: BoardParams,
@@ -125,8 +134,10 @@ public struct BoardParams has store, copy, drop {
     min_reputation_to_claim: u64,       // 0 par défaut ; par mission possible
 }
 
-/// Capacité du propriétaire. `store` pour pouvoir la confier à un multisig.
-public struct BoardAdminCap has key, store { id: UID, board_id: ID }
+/// Capacité du chef de projet. `key` sans `store` : seul ce module la transfère,
+/// pour que `Board.lead` et le détenteur de la cap ne puissent pas diverger. Un
+/// multisig se gère en choisissant une adresse multisig comme chef de projet.
+public struct BoardAdminCap has key { id: UID, board_id: ID }
 
 /// Objet partagé, un par mission. C'est lui qui porte le verrou de réservation
 /// et que `seal_approve_*` lit.
@@ -220,8 +231,9 @@ transférable ou supprimable hors du contrôle du module.
 
 | Contrôle | Mécanisme |
 | --- | --- |
-| propriétaire | possession de `BoardAdminCap` dont `board_id` correspond |
-| mainteneur | `board.maintainers.contains(ctx.sender())` ; pas de cap par mainteneur, pour pouvoir retirer un mainteneur sans récupérer d'objet |
+| chef de projet, actions courantes | `ctx.sender() == board.lead` (ce que `seal_approve` peut aussi vérifier, sans objet possédé) |
+| chef de projet, administration (paramètres, gel, transmission) | en plus, `&BoardAdminCap` avec `object::id(cap) == board.admin_cap_id` ; une ancienne cap est rejetée (`EStaleCap`) |
+| successeur désigné | `board.pending_lead == option::some(ctx.sender())` |
 | réservataire | `mission.claim` présent et `claim.claimer == ctx.sender()` |
 | temps | `&Clock` (`0x6`), lecture seule, n'ajoute pas de contention |
 | version | `board.version == VERSION`, comme `PackageVersion` dans `subscription.move`, pour pouvoir couper les anciennes versions après une mise à jour du package |
@@ -232,7 +244,8 @@ Tous portent `board_id`, `mission_id`, `seq` et l'adresse à l'origine. Ils serv
 `board list`/`board watch` côté CLI et aux indexeurs ; ils ne sont pas une source de
 vérité (l'état des objets l'est).
 
-`BoardCreated`, `MaintainerAdded`, `MaintainerRemoved`, `BoardFrozen`,
+`BoardCreated`, `TransferProposed { from, to }`, `TransferAccepted { from, to }`,
+`TransferCancelled { from, to }`, `BoardFrozen`,
 `MissionPosted`, `MissionEdited`, `DependencyAdded`, `DependencyMet`, `MissionUnblocked`,
 `BriefPublished { epoch }`, `MissionClaimed { claimer, epoch, deadline_ms }`,
 `ClaimExtended { deadline_ms }`, `NoteAdded`, `ClaimReleased`, `ClaimExpired`,
@@ -243,10 +256,51 @@ Plus tard : `BountyFunded`, `BountyPaid`, `BountyRefunded`.
 
 ### 4.4 Codes d'erreur (provisoires)
 
-`EWrongBoard`, `ENotMaintainer`, `ENotClaimer`, `EBadStatus`, `EAlreadyClaimed`,
+`EWrongBoard`, `ENotLead`, `ENotClaimer`, `EBadStatus`, `EAlreadyClaimed`,
 `EDepsUnmet`, `EStaleBrief`, `EExpired`, `ENotExpired`, `ETooManyClaims`, `ECooldown`,
 `ELowReputation`, `EBadKeyId`, `EBadDigest`, `ECycle`, `ETooManyDeps`, `EFrozen`,
-`EWrongVersion`, `ETtlTooLong`, `ENoAccess` (Seal).
+`EWrongVersion`, `ETtlTooLong`, `EStaleCap`, `ETransferPending`, `ENoPendingTransfer`,
+`ENotPendingLead`, `ESelfTransfer`, `ERecipientHasClaim`, `ENoAccess` (Seal).
+
+### 4.5 Transmission du projet (chef de projet unique)
+
+Le chef de projet reste celui qui définit les missions. S'il souhaite transmettre le projet
+à un participant, il le peut ; ce participant devient alors le nouveau chef de projet. Pas
+de seuil automatique : l'intention est de transmettre à un participant très actif, mais le
+choix du successeur appartient au seul chef de projet, la chaîne ne le juge pas.
+
+| Fonction | Qui | Préconditions | Effets |
+| --- | --- | --- | --- |
+| `propose_transfer(board, cap, to)` | chef de projet | `ctx.sender() == board.lead`, cap valide ; aucune transmission en cours (`ETransferPending`) ; `to != board.lead` (`ESelfTransfer`) ; `to` n'a aucun claim actif sur ce tableau, `Submitted` compris (`ERecipientHasClaim`) | `pending_lead = some(to)` ; `TransferProposed` |
+| `accept_transfer(board)` | successeur désigné | `pending_lead == some(ctx.sender())` (`ENotPendingLead`, ou `ENoPendingTransfer`) ; toujours aucun claim actif de l'appelant sur ce tableau (`ERecipientHasClaim`, revérifié car il a pu réserver entre-temps) | `lead = to` ; `pending_lead = none` ; une nouvelle `BoardAdminCap` est créée et transférée à `to`, `admin_cap_id` pointe vers elle ; l'ancienne cap devient inerte ; `TransferAccepted` |
+| `cancel_transfer(board, cap)` | chef de projet | cap valide ; transmission en cours (`ENoPendingTransfer`) | `pending_lead = none` ; `TransferCancelled` |
+| `destroy_stale_cap(board, cap)` | détenteur d'une ancienne cap | `object::id(cap) != board.admin_cap_id` | supprime l'objet inerte (ménage, facultatif) |
+
+Règles :
+
+- **Un seul chef de projet, une seule transmission en cours.** Pour en proposer une
+  autre, le chef de projet annule d'abord la précédente.
+- **Le chef de projet ne relit jamais son propre travail.** C'est pourquoi la
+  transmission est refusée (abort) si le destinataire détient un claim actif sur ce
+  tableau, y compris une livraison en relecture, comme la règle Q5 interdit au chef de
+  projet de réserver sur son propre tableau. Le destinataire doit d'abord livrer et être
+  accepté, ou abandonner.
+- **Pourquoi une nouvelle cap plutôt que déplacer l'ancienne.** La cap n'a pas `store`
+  (sinon un `public_transfer` hors du module ferait diverger `lead` et la cap) ; le module
+  ne peut donc pas la garder en dépôt pendant la transmission. Il en crée une neuve pour
+  le successeur et invalide l'ancienne par `admin_cap_id`. Effet identique : le rôle et la
+  seule cap valide passent au successeur.
+- **Après la transmission, l'ancien chef de projet est un participant normal.** Il perd
+  tous les droits de chef de projet et l'accès Seal attaché au rôle (§6.2). Il peut
+  ensuite réserver des missions, y compris celles qu'il a publiées, aux règles normales
+  (quotas, cooldown, `min_reputation`).
+- **La réputation reste aux adresses, pas au rôle.** `Board.reputation` et les
+  `DeliveryReceipt` ne bougent pas lors d'une transmission ; le nouveau chef de projet
+  garde ses compteurs de contributeur, l'ancien garde les siens.
+- **Les missions suivent le tableau.** Toutes les missions, quel que soit leur
+  `created_by`, sont gérées par le chef de projet actuel. Les livraisons en relecture
+  au moment de la transmission sont relues par le nouveau chef de projet.
+- **Gel.** Un tableau gelé peut quand même être transmis.
 
 ## 5. Machine à états
 
@@ -260,7 +314,7 @@ Plus tard : `BountyFunded`, `BountyPaid`, `BountyRefunded`.
 | 3 | `Claimed` | réservée, échéance en cours |
 | 4 | `Submitted` | livrée, en relecture |
 | 5 | `Accepted` | livrée et acceptée, terminal |
-| 6 | `Cancelled` | annulée par un mainteneur, terminal |
+| 6 | `Cancelled` | annulée par le chef de projet, terminal |
 
 `Expired` n'est pas un état stocké : c'est `Claimed` avec `now >= deadline_ms`. Côté Seal,
 cela suffit à couper l'accès ; côté état, `expire` le constate (voir §8).
@@ -302,21 +356,21 @@ stateDiagram-v2
 | déblocage | `unlock(child, parent)` | n'importe qui | `parent ∈ child.deps`, `parent.status == Accepted` | ajoute à `deps_met` ; si `deps_met == deps` → `Open` (brief à jour) ou `Rekey` |
 | brief | `publish_brief(board, mission, blob_ref)` | mainteneur | état `Rekey`, `Open` ou `Blocked` ; `key_id` au format §6.1 avec `epoch == key_epoch`, `kind == BRIEF` ; sha256 de 32 octets | remplace `brief` ; `Rekey → Open` si deps OK |
 | édition | `edit(board, mission, title?, labels?, ttl?)` | mainteneur | pas de claim actif | met à jour le public |
-| réservation | `claim(board, mission, operator?, clock)` | contributeur | `Open` ; `brief.epoch == key_epoch` ; `deps_met == deps` ; `active_claims < max_active_claims` ; réputation ≥ `min_reputation` ; cooldown respecté ; l'appelant n'est pas mainteneur de ce tableau (décision Q5) | `Claim{epoch = key_epoch, deadline = now + ttl}` ; `active_claims++` ; `attempts++` ; `MissionClaimed` |
+| réservation | `claim(board, mission, operator?, clock)` | contributeur | `Open` ; `brief.epoch == key_epoch` ; `deps_met == deps` ; `active_claims < max_active_claims` ; réputation ≥ `min_reputation` ; cooldown respecté ; l'appelant n'est pas le chef de projet de ce tableau (décision Q5) | `Claim{epoch = key_epoch, deadline = now + ttl}` ; `active_claims++` ; `attempts++` ; `MissionClaimed` |
 | note | `add_note(mission, blob_ref, clock)` | réservataire | `Claimed`, `now < deadline` ; `key_id` à `claim.epoch`, `kind == NOTES` ; `notes.length() < 16` | ajoute la référence |
 | prolongation | `extend(board, mission, new_deadline, clock)` | mainteneur | `Claimed` ; `new_deadline - started_ms <= max_claim_ttl_ms` | change `deadline_ms` |
 | abandon | `release(board, mission)` | réservataire | `Claimed` | supprime le claim, `key_epoch++`, `released++`, `active_claims--` → `Rekey` |
 | expiration | `expire(board, mission, clock)` | n'importe qui | `Claimed` et `now >= deadline_ms` | idem `release`, mais `expired++` et `last_expired` |
 | révocation | `revoke(board, mission)` | mainteneur | `Claimed` | idem, `ClaimRevoked` ; ne compte pas comme expiration pour le contributeur |
 | livraison | `submit(board, mission, output_ref, summary_sha256, clock)` | réservataire | `Claimed`, `now < deadline` ; `key_id` à `claim.epoch`, `kind == OUTPUT` | `Delivery{review_deadline = now + review_window}` → `Submitted` |
-| acceptation | `accept(board, mission, clock, ctx)` | mainteneur, différent de l'auteur | `Submitted` | `Accepted` ; `accepted++`, `active_claims--` ; mint et transfert de `DeliveryReceipt` à l'auteur ; `DeliveryAccepted` |
+| acceptation | `accept(board, mission, clock, ctx)` | chef de projet, différent de l'auteur (garanti par Q5 et §4.5) | `Submitted` | `Accepted` ; `accepted++`, `active_claims--` ; mint et transfert de `DeliveryReceipt` à l'auteur ; `DeliveryAccepted` |
 | refus, retravail | `reject(board, mission, rework = true, clock)` | mainteneur | `Submitted` | retour `Claimed`, nouvelle échéance, même `epoch` ; `rejections++` ; la livraison refusée reste référencée dans l'événement |
 | refus, réouverture | `reject(board, mission, rework = false)` | mainteneur | `Submitted` | `key_epoch++`, `rejected++`, `active_claims--` → `Rekey` |
 | relecture échue | `expire_review(board, mission, clock)` | n'importe qui | `Submitted`, `now >= review_deadline_ms`, `overdue` encore faux | rien d'automatique (décision Q3) : `delivery.overdue = true` et `ReviewOverdue` ; l'état reste `Submitted`, le quota du contributeur reste pris jusqu'à la décision du mainteneur |
 | retrait de dépendance | `remove_dependency(board, child, parent)` | mainteneur | `child` sans claim, `parent ∈ child.deps` | retire `parent` de `deps` et `deps_met` ; si `deps_met == deps` → `Open` (brief à jour) ou `Rekey` ; `DependencyRemoved` (cité au §7, ajouté au tableau en v1) |
 | annulation | `cancel(board, mission)` | mainteneur | non terminal, pas `Submitted` | `Cancelled` ; si claim actif : `key_epoch++`, `active_claims--`, aucun compteur négatif pour le contributeur |
-| mainteneurs | `add_maintainer` / `remove_maintainer` | propriétaire | `BoardAdminCap` | met à jour `maintainers` |
-| gel | `freeze(board)` | propriétaire | `BoardAdminCap` | plus de `post` ni de `claim` ; le reste continue |
+| transmission | `propose_transfer` / `accept_transfer` / `cancel_transfer` | chef de projet, puis successeur | voir §4.5 | change `lead` et `admin_cap_id` ; n'affecte aucune mission |
+| gel | `freeze(board, cap)` | chef de projet | `BoardAdminCap` valide | plus de `post` ni de `claim` ; le reste continue |
 
 ## 6. Politique Seal par mission
 
@@ -327,8 +381,8 @@ l'identité complète est `[package mnemos_board][id interne]`. L'id interne pro
 
 ```
 [mission id : 32 octets][key_epoch : u64 LE, 8 octets][kind : u8][nonce : 16 octets aléatoires]
-kind : 0 = BRIEF (mainteneur → réservataire), 1 = NOTES (réservataire → mainteneurs),
-       2 = OUTPUT (réservataire → mainteneurs puis missions dépendantes)
+kind : 0 = BRIEF (chef de projet → réservataire), 1 = NOTES (réservataire → chef de projet),
+       2 = OUTPUT (réservataire → chef de projet puis missions dépendantes)
 ```
 
 C'est le même principe que la Space actuelle (`[allowlist id][epoch][nonce]`), avec la
@@ -348,7 +402,7 @@ entry fun seal_approve_parent(id: vector<u8>, board: &Board, parent: &Mission, c
 
 Règles de `seal_approve` (pour `mission`, appelant `s = ctx.sender()`, `now = c.timestamp_ms()`) :
 
-| `kind` | Mainteneur actuel | Réservataire actif | Autres |
+| `kind` | Chef de projet actuel (`s == board.lead`) | Réservataire actif | Autres (dont l'ancien chef de projet) |
 | --- | --- | --- | --- |
 | BRIEF | toute epoch ≤ `key_epoch` | si `epoch == claim.epoch` et (`Claimed` et `now < deadline`) ou `Submitted` | refusé |
 | NOTES | toute epoch ≤ `key_epoch` | si `epoch == claim.epoch` et même condition | refusé |
@@ -361,8 +415,17 @@ l'allowlist), longueur ≥ 32 + 8 + 1 + 1.
 Règle de `seal_approve_parent` (passage de contexte, §7) : accordé si `kind == OUTPUT`,
 `parent.status == Accepted`, `id` désigne la livraison acceptée de `parent`,
 `object::id(parent) ∈ child.deps`, et `s` est le réservataire actif et non expiré de
-`child` (ou un mainteneur). Un dry-run peut recevoir plusieurs objets partagés ; il n'y a
+`child` (ou le chef de projet actuel). Un dry-run peut recevoir plusieurs objets partagés ; il n'y a
 pas besoin de stocker de liste d'enfants dans le parent.
+
+**Transmission et accès Seal.** La colonne « chef de projet » se lit à chaque demande de
+clés sur `board.lead`. Dès `accept_transfer`, le nouveau chef de projet obtient les clés
+de toutes les epochs ≤ `key_epoch` de toutes les missions, et l'ancien n'en obtient plus
+aucune au titre du rôle (seulement comme réservataire actif s'il réserve plus tard, aux
+règles normales). Comme toujours avec Seal, **les clés déjà obtenues et les briefs, notes
+et livraisons déjà déchiffrés par l'ancien chef de projet restent lisibles par lui** ; la
+transmission ne fait pas tourner les epochs. Un successeur désigné qui n'a pas encore
+accepté n'a aucun accès supplémentaire.
 
 ### 6.3 Epoch, expiration et rotation du contexte
 
@@ -371,14 +434,14 @@ pas besoin de stocker de liste d'enfants dans le parent.
   réservataire suivant travaille donc sous une epoch que l'ancien n'a jamais pu
   demander.
 - **Republication du brief.** Après une rotation, l'ancien brief est chiffré pour
-  l'ancienne epoch. La mission passe en `Rekey` et n'est plus réservable tant qu'un
-  mainteneur n'a pas republié le brief chiffré à la nouvelle epoch. La CLI le fait en une
+  l'ancienne epoch. La mission passe en `Rekey` et n'est plus réservable tant que le
+  chef de projet n'a pas republié le brief chiffré à la nouvelle epoch. La CLI le fait en une
   commande (`board rekey`), à partir de son cache local ou du brief déchiffré à
-  l'ancienne epoch (un mainteneur peut toujours le lire). C'est le coût de la rotation :
+  l'ancienne epoch (le chef de projet peut toujours le lire). C'est le coût de la rotation :
   un upload Walrus et une transaction par réouverture.
 - **Notes de l'ancien réservataire.** Elles restent référencées dans les événements et
-  lisibles par les mainteneurs. Le nouveau réservataire n'y a **jamais** accès par la
-  politique Seal, sans option par mission (décision Q10) ; un mainteneur peut, à la main,
+  lisibles par le chef de projet. Le nouveau réservataire n'y a **jamais** accès par la
+  politique Seal, sans option par mission (décision Q10) ; le chef de projet peut, à la main,
   en recopier une partie dans le nouveau brief.
 - **Horloge.** L'échéance est vérifiée deux fois : par `seal_approve` (refus dès
   `now >= deadline_ms`, même si personne n'a appelé `expire`) et par `submit`/`add_note`
@@ -450,7 +513,7 @@ niveaux :
    `expire`, que n'importe qui peut faire (un autre contributeur intéressé, le mainteneur,
    un agent de maintenance). `expire` remet la mission en `Rekey`, augmente `key_epoch`,
    libère le quota du contributeur et inscrit l'expiration à son compteur. Après
-   `expire`, la mission est en `Rekey` : `claim` reste refusé tant qu'un mainteneur n'a
+   `expire`, la mission est en `Rekey` : `claim` reste refusé tant que le chef de projet n'a
    pas republié le brief à la nouvelle epoch (`board rekey`). Un contributeur ne peut donc
    pas reprendre seul une mission échue. `board claim` sur une mission échue appelle
    `expire` et indique qu'il faut attendre le `rekey`.
@@ -464,7 +527,7 @@ avant l'échéance (`extend`).
 - **Forme.** Deux traces : un compteur `RepStats` par adresse dans `Board.reputation`,
   pratique à lire, et un `DeliveryReceipt` par mission acceptée, objet `key` sans `store`,
   donc non transférable et non vendable. Les deux sont propres à un tableau.
-- **Ce qu'elle prouve.** Qu'à telle date, une adresse mainteneur de tel tableau a accepté
+- **Ce qu'elle prouve.** Qu'à telle date, l'adresse alors chef de projet de tel tableau a accepté
   une livraison de telle adresse, dont le chiffré a tel sha256, pour la mission n de ce
   tableau. Et combien d'expirations, d'abandons et de refus cette adresse a eu sur ce
   tableau.
@@ -479,12 +542,16 @@ avant l'échéance (`extend`).
   détenteur si le module l'autorise ; le module ne fournit pas de fonction de
   suppression, donc le reçu reste. Une adresse peut en revanche changer de clé : la
   réputation est liée à l'adresse, pas à la personne.
+- **Transmission du projet.** La réputation reste aux adresses, pas au rôle : une
+  transmission (§4.5) ne déplace ni compteur ni reçu. Les reçus déjà émis gardent dans
+  `accepted_by` l'adresse qui était chef de projet au moment de l'acceptation.
 
 ## 10. Garde-fous anti-abus (résumé, détail au §14)
 
 `max_active_claims` par adresse, `claim_ttl` borné, `reclaim_cooldown_ms` pour un
-ancien réservataire expiré, `min_reputation` optionnel, interdiction pour un mainteneur de
-réserver sur son propre tableau et d'accepter sa propre livraison, gel du tableau.
+ancien réservataire expiré, `min_reputation` optionnel, interdiction pour le chef de projet
+de réserver sur son propre tableau et d'accepter sa propre livraison, transmission refusée
+vers une adresse qui détient un claim actif (§4.5), gel du tableau.
 
 ## 11. Primes en SUI : esquisse (phase tardive)
 
@@ -527,9 +594,11 @@ RPC est testnet avant toute écriture. Deux implémentations : `native/src/board
 
 | Commande | Qui | Effet | Tx |
 | --- | --- | --- | --- |
-| `board create --name N [options serveurs] [--claim-ttl 72h] [--max-claims 2]` | propriétaire | crée `Board`, `BoardAdminCap` | oui |
+| `board create --name N [options serveurs] [--claim-ttl 72h] [--max-claims 2]` | créateur, qui devient chef de projet | crée `Board`, `BoardAdminCap` | oui |
 | `board join --board <id> [--name N]` | tous | enregistre le tableau localement | non |
-| `board maintainer add|remove <adresse>` | propriétaire | gestion des mainteneurs | oui |
+| `board transfer propose <adresse>` | chef de projet | propose de transmettre le projet ; refusé si l'adresse détient un claim actif sur ce tableau | oui |
+| `board transfer accept --board <id>` | successeur désigné | accepte et devient chef de projet ; reçoit la nouvelle `BoardAdminCap` | oui |
+| `board transfer cancel` | chef de projet | annule la transmission en cours | oui |
 | `board list [--status open] [--label L] [--mine]` | tous | liste publique (état des objets, pas seulement les événements) | non |
 | `board show <seq\|id>` | tous | détail public d'une mission | non |
 | `board post --title T --brief-file F [--label L…] [--depends <seq>…] [--ttl 48h] [--min-rep N]` | mainteneur | chiffre le brief à l'epoch 0, upload Walrus, `post` + `add_dependency` dans un PTB | oui |
@@ -588,12 +657,14 @@ clé, et produit les mêmes transactions qu'un humain.
 | **Squat de réservation** | réserver beaucoup de missions sans travailler, pour bloquer ou lire les briefs | quota `max_active_claims`, TTL court par défaut, cooldown par mission, `min_reputation`, compteur `expired` public ; plus tard dépôt de réservation | une adresse neuve peut squatter jusqu'au quota ; des adresses multiples contournent le quota (sybil) |
 | **Collecte de briefs** | réserver pour lire le brief puis abandonner | rotation d'epoch, un brief minimal par mission, compteur `released`, `min_reputation` pour les missions sensibles | le brief lu est perdu ; ne pas mettre de secret dans un brief ouvert à n'importe qui |
 | **Nuisance (griefing)** | appeler `expire`, `unlock` à répétition, spammer de livraisons | `expire`/`unlock` n'agissent que si la condition est vraie, sinon abort (le spammeur paie le gas) ; une seule livraison en cours par mission | coût de gas pour le mainteneur qui relit |
-| **Sybil sur la réputation** | un mainteneur s'auto-accepte via d'autres adresses | réputation par tableau, mainteneur ne peut pas réserver sur son tableau ni accepter sa livraison | inefficace contre des adresses complices ; la réputation vaut la confiance accordée au tableau |
+| **Sybil sur la réputation** | le chef de projet s'auto-accepte via d'autres adresses, ou transmet le projet à un complice puis réserve et se fait accepter ses propres missions | réputation par tableau, le chef de projet ne peut pas réserver sur son tableau ni accepter sa livraison ; transmissions publiques (`TransferProposed`/`TransferAccepted`) | inefficace contre des adresses complices ; la réputation vaut la confiance accordée au tableau |
 | **Livraison malveillante** | code piégé, contenu faux, injection d'instructions pour l'agent mainteneur | sha256 vérifié, revue humaine obligatoire, aucune exécution automatique, sortie marquée comme non fiable | la qualité n'est pas vérifiable par la chaîne |
 | **Mainteneur malveillant** | refuse puis réutilise le travail | événements publics de refus, compteur `rejections` par mission, historique | inévitable sans arbitrage ; important si primes |
-| **Perte de clé mainteneur** | un mainteneur perd sa clé | plusieurs mainteneurs, `BoardAdminCap` sur une adresse multisig, `remove_maintainer` | si le propriétaire perd `BoardAdminCap` et tous les mainteneurs leurs clés : tableau figé, missions expirent, rien n'est récupérable ; les données chiffrées restent lisibles par les anciens réservataires qui ont leurs clés |
+| **Perte de clé du chef de projet** | le chef de projet perd sa clé | adresse multisig comme chef de projet ; transmettre le projet avant de changer de clé | chef de projet unique = point de défaillance unique : sans sa clé, plus de relecture ni de transmission, missions qui expirent, rien n'est récupérable ; les données chiffrées restent lisibles par les anciens réservataires qui ont leurs clés |
+| **Transmission détournée ou forcée** | le successeur désigné tarde, ou le chef de projet transmet sous pression | deux étapes : rien ne change sans `accept_transfer` du destinataire ; `cancel_transfer` à tout moment avant ; une seule transmission en cours | le choix du successeur n'est pas jugé par la chaîne ; une transmission acceptée ne se défait que par une nouvelle transmission du nouveau chef de projet |
+| **Ancien chef de projet** | garde ce qu'il a lu, ou réserve ensuite des missions qu'il a lui-même écrites | perte immédiate de l'accès Seal attaché au rôle ; règles normales de réservation | ce qu'il a déjà déchiffré reste lu ; il connaît les briefs qu'il a écrits |
 | **Front-running** | deux contributeurs réservent la même mission | ordre fixé par le consensus sur l'objet partagé, le second abort (`EAlreadyClaimed`) et paie le gas ; la CLI vérifie l'état avant d'envoyer | pas d'équité « premier arrivé » au sens humain ; un validateur ou un bot rapide peut gagner ; option future : missions assignées (`assignee`) |
-| **Fuite de clé de session ou de clé de contributeur** | vol de la clé de l'agent | `revoke` par un mainteneur + rotation d'epoch ; clés fetchées seulement en mémoire, comme `share` | ce qui a été lu par l'attaquant reste lu |
+| **Fuite de clé de session ou de clé de contributeur** | vol de la clé de l'agent | `revoke` par le chef de projet + rotation d'epoch ; clés fetchées seulement en mémoire, comme `share` | ce qui a été lu par l'attaquant reste lu |
 | **Serveurs de clés** | serveurs indisponibles ou de mauvaise foi | même choix de seuil que `share` ; comité 3 sur 5 possible | serveurs testnet gratuits sans garantie ; un seuil 1 fait confiance à un seul serveur |
 | **Dérive d'horloge** | dry-run vs transaction | refus de travailler près de l'échéance côté CLI | quelques secondes d'écart possibles |
 | **Mise à jour du package** | ancienne version appelée | garde `version`, comme `subscription.move` ; l'identité Seal reste liée au premier id de package | migration à tester explicitement |
@@ -623,6 +694,8 @@ remboursé à la suppression.
 | `board accept` | `Mission`, `Board.reputation`, nouveau `DeliveryReceipt` | 0,005 à 0,008 |
 | `unlock` (par enfant) | `Mission` enfant | 0,002 à 0,004 |
 | `release` / `expire` / `revoke` | suppression du claim, remboursement partiel du stockage | 0,002 à 0,004 |
+| `board transfer propose` / `cancel` | `Board.pending_lead` | 0,002 à 0,004 |
+| `board transfer accept` | `Board.lead`, nouvelle `BoardAdminCap` | 0,003 à 0,005 |
 | `board pull`, `list`, `show`, `review` | lectures et demandes de clés Seal | 0 SUI |
 
 Ordre de grandeur pour un cycle complet d'une mission (post, claim, 2 notes, submit,
@@ -639,11 +712,20 @@ push, comme pour `share`.
    chaque transition valide ; chaque transition interdite avec le bon code d'abort
    (mauvais état, mauvais appelant, échéance passée, quotas, cooldown, réputation,
    cycle, trop de dépendances, tableau gelé, mauvaise version) ; `seal_approve` pour
-   chaque ligne du tableau §6.2 (mainteneur, réservataire actif, ancien réservataire,
+   chaque ligne du tableau §6.2 (chef de projet, réservataire actif, ancien réservataire,
    tiers, epoch future, epoch ancienne, mauvais kind, préfixe d'une autre mission,
    échéance à `deadline - 1` et `deadline`) ; `seal_approve_parent` (parent non accepté,
    enfant non lié, réservataire expiré, grand-parent) ; reçu non transférable (test de
-   compilation négatif documenté) ; compteurs de réputation.
+   compilation négatif documenté) ; compteurs de réputation ; transmission du projet
+   (§4.5) : propose, accept, cancel ; seconde proposition pendant une transmission en
+   cours (`ETransferPending`) ; accept par une autre adresse (`ENotPendingLead`) ; cancel
+   puis accept (`ENoPendingTransfer`) ; destinataire avec claim actif ou livraison en
+   relecture, refusé à la proposition et revérifié à l'acceptation
+   (`ERecipientHasClaim`) ; auto-transmission (`ESelfTransfer`) ; ancienne cap rejetée
+   après transmission (`EStaleCap`) ; ancien chef de projet sans droits de chef de projet
+   et refusé par `seal_approve` au titre du rôle, nouveau chef de projet accordé ;
+   ancien chef de projet qui réserve ensuite aux règles normales ; nouveau chef de
+   projet qui ne peut plus réserver ; réputation inchangée par la transmission.
 2. **Rust** (`cargo test --release --features seal`) : format des key ids, parsing de
    `Board`/`Mission`, validation des paramètres, construction des PTB, classification
    des erreurs ; clippy et rustfmt propres, avec et sans `seal`.
@@ -653,7 +735,7 @@ push, comme pour `share`.
    messages, produisent les mêmes key ids, les mêmes octets de blob et le même JSON pour
    le même état ; déchiffrement hors ligne croisé avec des serveurs de clés en processus.
 5. **E2E testnet** (`scripts/e2e_board.sh`, sur un package publié avec feu vert) :
-   A propriétaire et mainteneur, B et C contributeurs, D tiers.
+   A chef de projet, B et C contributeurs, D tiers.
    - post M1 et M2 (M2 dépend de M1) ; M2 `Blocked` ; D ne peut rien déchiffrer ;
    - B réserve M1, lit le brief ; C est refusé (`EAlreadyClaimed`) et ne peut pas lire ;
    - B note, livre ; A relit, refuse en rework, B relivre, A accepte ; reçu à B ;
@@ -697,9 +779,9 @@ propositions du document sont retenues. Les questions sans proposition explicite
 | --- | --- | --- |
 | Q1 | Branche | `preview/board`, partant de `preview/seal` `b3508ac`. `preview/seal` et `main` restent intacts. |
 | Q2 | Brief obligatoire | Oui pour être réservable : une mission sans brief chiffré reste en `Rekey` (non réservable). Pas de mission entièrement publique dans la BETA ; les métadonnées (titre, labels) restent publiques. |
-| Q3 | Relecture échue | Rien d'automatique : `expire_review` pose `delivery.overdue` et émet `ReviewOverdue`, sans changer l'état ni rouvrir ni accepter. Conséquence assumée : le quota du contributeur reste pris tant que le mainteneur ne décide pas. |
+| Q3 | Relecture échue | Rien d'automatique : `expire_review` pose `delivery.overdue` et émet `ReviewOverdue`, sans changer l'état ni rouvrir ni accepter. Conséquence assumée : le quota du contributeur reste pris tant que le chef de projet ne décide pas. |
 | Q4 | Contention | `Board` muté à chaque `claim` et `accept` (quotas et réputation dans `Board.reputation`). Pas d'objets de réputation par adresse dans la BETA. |
-| Q5 | Mainteneurs contributeurs | Interdit : un mainteneur ne peut pas réserver sur son propre tableau, et l'auteur d'une livraison ne peut pas l'accepter. |
+| Q5 | Mainteneur contributeur | Interdit : le chef de projet ne peut pas réserver sur son propre tableau, et l'auteur d'une livraison ne peut pas l'accepter. Une transmission vers une adresse qui détient un claim actif est refusée (§4.5). |
 | Q6 | Agents, `operator` | Déclaratif pour la BETA, sans contresignature on-chain. Documenté comme « non prouvé ». |
 | Q7 | Portée du contexte | Parents directs seulement. |
 | Q8 | Réputation | Par tableau seulement, pas de registre global. |
@@ -708,6 +790,7 @@ propositions du document sont retenues. Les questions sans proposition explicite
 | Q11 | Serveurs de clés | Mêmes options que `share` (2 sur 2 par défaut, `--committee`, `--key-server … --threshold N`), comité non imposé. |
 | Q12 | Primes | Hors BETA jusqu'à une étape dédiée (P8) ; aucun champ dynamique réservé en P1. |
 | Q13 | Page BETA | Le tableau n'apparaît sur `mnemos.rest/beta` qu'après un e2e testnet au vert (P5), en P6. |
+| C1 | Mainteneurs (correction du 13 novembre 2026) | Un seul chef de projet (mainteneur) par tableau : celui qui a défini les missions, au départ le créateur. Pas de co-mainteneurs, pas d'`add_maintainer`/`remove_maintainer`. Il peut transmettre le projet à un participant, qui devient le nouveau chef de projet : transmission en deux étapes (`propose_transfer`, `accept_transfer`, `cancel_transfer`), une seule en cours, refusée si le destinataire détient un claim actif ; l'ancien chef de projet devient un participant normal ; la réputation reste aux adresses. Le choix du successeur (« un participant très actif ») appartient au chef de projet, sans seuil automatique. Voir §4.5. |
 
 ### Valeurs par défaut de `BoardParams` (v1)
 
@@ -722,9 +805,6 @@ propositions du document sont retenues. Les questions sans proposition explicite
 
 ### Points relevés en v1, à traiter en P1 (tests Move)
 
-- Une adresse qui devient mainteneur alors qu'elle détient un claim actif sur ce tableau :
-  P1 choisira entre refuser `add_maintainer` (`EAlreadyClaimed`) et laisser le claim
-  courant se terminer ; le test Move fixera le comportement.
 - `expire_review` appelé deux fois : le second appel abort (`EBadStatus`), pour éviter le
   spam d'événements.
 
