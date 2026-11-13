@@ -1,7 +1,8 @@
 # Mnemos : tableau de missions coop (BETA) : document de conception
 
-> **BETA (testnet preview), conception uniquement.** Ce document décrit une fonctionnalité
-> future. Il n'existe aujourd'hui ni code, ni package Move publié, ni commande `board`.
+> **BETA (testnet preview).** Ce document décrit une fonctionnalité en cours. Depuis P1,
+> le package `move/MissionBoard` existe et est testé **en local seulement** : il n'est
+> pas publié sur testnet, et il n'y a pas encore de commande `board` (§19).
 > Version v1 (phase P0) : les 13 questions ouvertes de la v0 sont tranchées, voir §18.
 > Correction v1 : un seul chef de projet (mainteneur) par tableau, rôle transmissible
 > en deux étapes (§4.5, décision C1).
@@ -11,7 +12,7 @@
 
 | | |
 | --- | --- |
-| Statut | design v1 (P0), questions ouvertes tranchées le 13 novembre 2026, puis correction « chef de projet unique » le même jour ; aucune ligne de code avant le feu vert de P1 |
+| Statut | design v1 (P0), questions ouvertes tranchées le 13 novembre 2026, puis correction « chef de projet unique » le même jour ; P1 (package Move et tests locaux) fait, voir §19 |
 | Branche | `preview/board`, partant de `preview/seal` `b3508ac` (Q1) ; `main` n'est pas concerné |
 | Base | Mnemos `preview/seal` `b3508ac` ; sui-seal-client `v0.2.0` (`da579f6`) |
 | Sources lues | `native/src/share.rs`, `mnemos/py_share.py`, `move/SharedSpace/sources/space.move`, `docs/en/preview-seal.md`, `docs/en/test-report-preview-seal.md` ; dans sui-seal-client : `move/allowlist`, `move/policies` (`timelock`, `private_data`, `subscription`) |
@@ -261,6 +262,10 @@ Plus tard : `BountyFunded`, `BountyPaid`, `BountyRefunded`.
 `ELowReputation`, `EBadKeyId`, `EBadDigest`, `ECycle`, `ETooManyDeps`, `EFrozen`,
 `EWrongVersion`, `ETtlTooLong`, `EStaleCap`, `ETransferPending`, `ENoPendingTransfer`,
 `ENotPendingLead`, `ESelfTransfer`, `ERecipientHasClaim`, `ENoAccess` (Seal).
+Ajoutés en P1 : `ELeadCannotClaim` (Q5), `ETooLong` (bornes de nom, titre, labels),
+`ETooManyNotes`, `EBadParams` (paramètres incohérents, TTL nul), `EBadDeadline`
+(prolongation non postérieure), `ENotDependency`, `EAlreadyMet`, `EDuplicateDep`.
+Valeurs numériques : voir `move/MissionBoard/sources/board.move` (1 à 34).
 
 ### 4.5 Transmission du projet (chef de projet unique)
 
@@ -321,9 +326,8 @@ cela suffit à couper l'accès ; côté état, `expire` le constate (voir §8).
 
 ```mermaid
 stateDiagram-v2
-    [*] --> Blocked: post (deps non satisfaites)
-    [*] --> Rekey: post sans brief
-    [*] --> Open: post avec brief, sans deps
+    [*] --> Rekey: post (toujours, voir §5.1)
+    Rekey --> Blocked: add_dependency (parent non accepté)
     Blocked --> Blocked: unlock (un parent accepté, d'autres manquent)
     Blocked --> Open: unlock (dernier parent accepté, brief à jour)
     Blocked --> Rekey: unlock (dernier parent accepté, brief absent)
@@ -351,26 +355,27 @@ stateDiagram-v2
 
 | Transition | Fonction | Qui | Préconditions principales | Effets |
 | --- | --- | --- | --- | --- |
-| création | `post(board, title, labels, ttl, min_rep, brief?, clock)` | mainteneur | tableau non gelé ; `ttl <= max_claim_ttl_ms` | crée `Mission` partagée, `seq = next_seq++`, état `Rekey` ou `Open` ; `MissionPosted` |
+| création | `post(board, title, labels, ttl, min_rep, clock)` | mainteneur | tableau non gelé ; `ttl <= max_claim_ttl_ms` (`ttl = 0` : valeur par défaut du tableau) ; titre ≤ 128 octets, ≤ 8 labels de ≤ 32 octets | crée `Mission` partagée, `seq = next_seq++`, état `Rekey` ; `MissionPosted`. Correction P1 : pas de brief à la création, car l'id de clé du brief commence par l'id de la mission, qui n'existe qu'une fois la transaction exécutée. Le brief (et les `add_dependency`) partent dans une seconde transaction |
 | dépendance | `add_dependency(board, child, parent)` | mainteneur | `child` en `Open`/`Rekey`/`Blocked` sans claim ; `parent.seq < child.seq` (interdit les cycles) ; même tableau ; `deps.length() < 8` | ajoute `parent` à `deps` ; si parent déjà `Accepted`, l'ajoute aussi à `deps_met` ; sinon `child → Blocked` |
-| déblocage | `unlock(child, parent)` | n'importe qui | `parent ∈ child.deps`, `parent.status == Accepted` | ajoute à `deps_met` ; si `deps_met == deps` → `Open` (brief à jour) ou `Rekey` |
+| déblocage | `unlock(board, child, parent)` | n'importe qui | `parent ∈ child.deps`, `parent.status == Accepted` | ajoute à `deps_met` ; si `deps_met == deps` → `Open` (brief à jour) ou `Rekey` |
 | brief | `publish_brief(board, mission, blob_ref)` | mainteneur | état `Rekey`, `Open` ou `Blocked` ; `key_id` au format §6.1 avec `epoch == key_epoch`, `kind == BRIEF` ; sha256 de 32 octets | remplace `brief` ; `Rekey → Open` si deps OK |
 | édition | `edit(board, mission, title?, labels?, ttl?)` | mainteneur | pas de claim actif | met à jour le public |
 | réservation | `claim(board, mission, operator?, clock)` | contributeur | `Open` ; `brief.epoch == key_epoch` ; `deps_met == deps` ; `active_claims < max_active_claims` ; réputation ≥ `min_reputation` ; cooldown respecté ; l'appelant n'est pas le chef de projet de ce tableau (décision Q5) | `Claim{epoch = key_epoch, deadline = now + ttl}` ; `active_claims++` ; `attempts++` ; `MissionClaimed` |
-| note | `add_note(mission, blob_ref, clock)` | réservataire | `Claimed`, `now < deadline` ; `key_id` à `claim.epoch`, `kind == NOTES` ; `notes.length() < 16` | ajoute la référence |
-| prolongation | `extend(board, mission, new_deadline, clock)` | mainteneur | `Claimed` ; `new_deadline - started_ms <= max_claim_ttl_ms` | change `deadline_ms` |
+| note | `add_note(board, mission, blob_ref, clock)` | réservataire | `Claimed`, `now < deadline` ; `key_id` à `claim.epoch`, `kind == NOTES` ; `notes.length() < 16` | ajoute la référence |
+| prolongation | `extend(board, mission, new_deadline, clock)` | mainteneur | `Claimed`, `now < deadline_ms` (`EExpired`) ; `new_deadline > deadline_ms` (`EBadDeadline`) ; `new_deadline - started_ms <= max_claim_ttl_ms` | change `deadline_ms` |
 | abandon | `release(board, mission)` | réservataire | `Claimed` | supprime le claim, `key_epoch++`, `released++`, `active_claims--` → `Rekey` |
 | expiration | `expire(board, mission, clock)` | n'importe qui | `Claimed` et `now >= deadline_ms` | idem `release`, mais `expired++` et `last_expired` |
 | révocation | `revoke(board, mission)` | mainteneur | `Claimed` | idem, `ClaimRevoked` ; ne compte pas comme expiration pour le contributeur |
 | livraison | `submit(board, mission, output_ref, summary_sha256, clock)` | réservataire | `Claimed`, `now < deadline` ; `key_id` à `claim.epoch`, `kind == OUTPUT` | `Delivery{review_deadline = now + review_window}` → `Submitted` |
 | acceptation | `accept(board, mission, clock, ctx)` | chef de projet, différent de l'auteur (garanti par Q5 et §4.5) | `Submitted` | `Accepted` ; `accepted++`, `active_claims--` ; mint et transfert de `DeliveryReceipt` à l'auteur ; `DeliveryAccepted` |
-| refus, retravail | `reject(board, mission, rework = true, clock)` | mainteneur | `Submitted` | retour `Claimed`, nouvelle échéance, même `epoch` ; `rejections++` ; la livraison refusée reste référencée dans l'événement |
-| refus, réouverture | `reject(board, mission, rework = false)` | mainteneur | `Submitted` | `key_epoch++`, `rejected++`, `active_claims--` → `Rekey` |
+| refus, retravail | `reject(board, mission, rework = true, clock)` | mainteneur | `Submitted` | retour `Claimed`, nouvelle échéance `now + claim_ttl_ms` (et `started_ms = now`), même `epoch`, drapeau `overdue` remis à faux ; `rejections++` ; la livraison refusée reste référencée dans l'événement |
+| refus, réouverture | `reject(board, mission, rework = false, clock)` | mainteneur | `Submitted` | `key_epoch++`, `rejected++`, `active_claims--` → `Rekey` |
 | relecture échue | `expire_review(board, mission, clock)` | n'importe qui | `Submitted`, `now >= review_deadline_ms`, `overdue` encore faux | rien d'automatique (décision Q3) : `delivery.overdue = true` et `ReviewOverdue` ; l'état reste `Submitted`, le quota du contributeur reste pris jusqu'à la décision du mainteneur |
 | retrait de dépendance | `remove_dependency(board, child, parent)` | mainteneur | `child` sans claim, `parent ∈ child.deps` | retire `parent` de `deps` et `deps_met` ; si `deps_met == deps` → `Open` (brief à jour) ou `Rekey` ; `DependencyRemoved` (cité au §7, ajouté au tableau en v1) |
 | annulation | `cancel(board, mission)` | mainteneur | non terminal, pas `Submitted` | `Cancelled` ; si claim actif : `key_epoch++`, `active_claims--`, aucun compteur négatif pour le contributeur |
 | transmission | `propose_transfer` / `accept_transfer` / `cancel_transfer` | chef de projet, puis successeur | voir §4.5 | change `lead` et `admin_cap_id` ; n'affecte aucune mission |
-| gel | `freeze(board, cap)` | chef de projet | `BoardAdminCap` valide | plus de `post` ni de `claim` ; le reste continue |
+| gel | `freeze_board(board, cap)` (`freeze` est un mot réservé de Move) | chef de projet | `BoardAdminCap` valide | définitif : plus de `post` ni de `claim` ; le reste continue |
+| paramètres | `set_params(board, cap, params)` | chef de projet | `BoardAdminCap` valide ; `params` construit par `new_params` (TTL par défaut > 0 et ≤ max, relecture > 0, quota > 0) | remplace `BoardParams` ; `BoardParamsChanged` |
 
 ## 6. Politique Seal par mission
 
@@ -483,7 +488,7 @@ comité imposé (décision Q11).
   inférieur (`parent.seq < child.seq`) du même tableau ; aucun cycle n'est possible et la
   vérification est en O(1). Au plus 8 parents par mission.
 - **Pas de liste d'enfants.** Le parent ne connaît pas ses enfants ; c'est l'enfant qui
-  pointe vers ses parents. Le déblocage se fait par `unlock(child, parent)`,
+  pointe vers ses parents. Le déblocage se fait par `unlock(board, child, parent)`,
   permissionless, une transaction par parent, regroupables dans un même PTB. La CLI
   l'appelle automatiquement après un `accept` (`board accept` cherche les enfants via les
   événements `DependencyAdded` et ajoute les `unlock` dans la même transaction, dans une
@@ -601,7 +606,7 @@ RPC est testnet avant toute écriture. Deux implémentations : `native/src/board
 | `board transfer cancel` | chef de projet | annule la transmission en cours | oui |
 | `board list [--status open] [--label L] [--mine]` | tous | liste publique (état des objets, pas seulement les événements) | non |
 | `board show <seq\|id>` | tous | détail public d'une mission | non |
-| `board post --title T --brief-file F [--label L…] [--depends <seq>…] [--ttl 48h] [--min-rep N]` | mainteneur | chiffre le brief à l'epoch 0, upload Walrus, `post` + `add_dependency` dans un PTB | oui |
+| `board post --title T --brief-file F [--label L…] [--depends <seq>…] [--ttl 48h] [--min-rep N]` | mainteneur | deux transactions : `post`, puis chiffrement du brief à l'epoch 0 avec l'id de la mission, upload Walrus, `add_dependency` + `publish_brief` dans un PTB | oui (2) |
 | `board rekey <seq>` | mainteneur | rechiffre le brief à la nouvelle epoch et le republie | oui |
 | `board depend <enfant> --on <parent>` / `board undepend` | mainteneur | dépendances | oui |
 | `board claim <seq> [--operator <adresse>]` | contributeur | réserve ; appelle `unlock` si nécessaire dans le même PTB | oui |
@@ -685,7 +690,7 @@ remboursé à la suppression.
 | Opération | Ce qui change | Estimation (SUI testnet) |
 | --- | --- | --- |
 | `board create` | création de `Board` (+ table) et `BoardAdminCap` | 0,004 à 0,008 |
-| `board post` sans dépendance | nouvel objet `Mission` (~0,5 à 1 Ko), événement | 0,005 à 0,010 |
+| `board post` sans dépendance | nouvel objet `Mission` (~0,5 à 1 Ko), événement, puis `publish_brief` dans une seconde transaction | 0,008 à 0,014 |
 | `board post` avec k dépendances | idem + k `add_dependency` dans le PTB | + 0,0005 à 0,001 par dépendance |
 | `board rekey` | remplace une `BlobRef` | 0,003 à 0,004 |
 | `board claim` | mutation de `Mission` et `Board` (quota) | 0,003 à 0,005 |
@@ -755,7 +760,7 @@ push, comme pour `share`.
 | Phase | Contenu | Sortie | Feu vert requis |
 | --- | --- | --- | --- |
 | P0 | ce document, réponses aux questions ouvertes | design v1 (fait : ce document, §18) | validation du design (donnée) |
-| P1 | `move/MissionBoard` + tests Move, sans publication | package compilé, tests verts en local | avant de commencer |
+| P1 | `move/MissionBoard` + tests Move, sans publication | package compilé, tests verts en local (fait, §19) | avant de commencer (donné) |
 | P2 | publication testnet du package | id de package, UpgradeCap, transaction | **publication** |
 | P3 | lane Rust `board` + tests | deux suites vertes | push sur `preview/board` |
 | P4 | lane Python + parité | deux suites vertes | push sur `preview/board` |
@@ -803,10 +808,10 @@ propositions du document sont retenues. Les questions sans proposition explicite
 | `reclaim_cooldown_ms` | 24 h | 86 400 000 |
 | `min_reputation_to_claim` | 0 | |
 
-### Points relevés en v1, à traiter en P1 (tests Move)
+### Points relevés en v1, traités en P1
 
 - `expire_review` appelé deux fois : le second appel abort (`EBadStatus`), pour éviter le
-  spam d'événements.
+  spam d'événements. Implémenté et testé.
 
 ### Texte de la v0 (pour mémoire)
 
@@ -842,3 +847,36 @@ propositions du document sont retenues. Les questions sans proposition explicite
     seulement après l'e2e testnet ?
 
 </details>
+
+## 19. État de P1 (local, BETA)
+
+Package `move/MissionBoard` (`mnemos_board::board`, édition 2024, MIT), sans autre
+dépendance que le framework Sui et la stdlib Move implicites. **Non publié** : aucune
+transaction testnet, aucun gas dépensé.
+
+- Contenu : objets du §4 (chef de projet unique et transmission du §4.5), machine à
+  états du §5, `seal_approve` et `seal_approve_parent` (§6.2, §7), réputation (§9),
+  garde-fous (§10), valeurs par défaut Q9, événements du §4.3.
+- Tests : `sui move test` dans `move/MissionBoard` (`tests/board_tests.move`, 168 tests), chaque
+  test d'échec vérifié par mutation (retirer le dernier appel fait échouer le test,
+  donc l'abort attendu vient bien de cet appel). Tests de compilation négatifs :
+  `move/MissionBoard/negative/check.sh` vérifie que `DeliveryReceipt` et `BoardAdminCap`
+  ne peuvent pas être transférés hors du module (`key` sans `store`).
+- `sui move build --lint` sans avertissement : les fonctions publiques prennent
+  `&mut TxContext`, comme le recommande le linter pour pouvoir les faire évoluer lors
+  d'une mise à jour du package.
+
+Écarts avec la v1, corrigés ci-dessus :
+
+1. `post` ne prend plus de brief : l'id de clé Seal du brief commence par l'id de la
+   mission, inconnu avant l'exécution de la transaction de création. Une mission naît
+   toujours en `Rekey` ; `board post` fait deux transactions.
+2. `freeze` s'appelle `freeze_board` (mot réservé en Move) et prend la `BoardAdminCap`.
+3. `unlock` et `add_note` reçoivent aussi `board`, pour la garde de version.
+4. Ajouts nécessaires à l'implémentation : `create(name, params)`, `default_params`,
+   `new_params`, `new_blob_ref` (constructeurs appelables depuis un PTB), `set_params` et
+   l'événement `BoardParamsChanged`, huit codes d'erreur (§4.4), préconditions précisées
+   de `extend` et de `reject` en retravail (§5.1).
+5. `Clock` reste passé en paramètre (`&Clock`, comme le prévoit Seal pour le dry-run) ;
+   le framework récent propose aussi `clock::borrow()`, non utilisé ici.
+
