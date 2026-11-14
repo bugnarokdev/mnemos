@@ -6,7 +6,7 @@
 
 **Sovereign memory for [Hermes Agent](https://github.com/NousResearch/hermes-agent): encrypted on your machine, stored on Walrus, indexed on Sui, restorable anywhere.**
 
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-3776AB.svg)](https://www.python.org/)
 [![Hermes >=0.23.1](https://img.shields.io/badge/hermes-%3E%3D0.23.1-6f42c1.svg)](https://github.com/NousResearch/hermes-agent)
 [![Sui testnet](https://img.shields.io/badge/Sui-testnet-4DA2FF.svg)](https://sui.io/)
@@ -151,4 +151,4 @@ Prefetch and recall do not use the network. There is no telemetry.
 
 ## License
 
-MIT. See [LICENSE](LICENSE). Built by BugNaRok ([@bugnarokdev](https://github.com/bugnarokdev)).
+AGPL-3.0. See [LICENSE](LICENSE). Built by BugNaRok ([@bugnarokdev](https://github.com/bugnarokdev)).
