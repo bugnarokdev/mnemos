@@ -1,21 +1,184 @@
-MIT License
+Copyright (C) 2026 bugnarokdev
 
-Copyright (c) 2026 bugnarokdev
+Everyone is permitted to copy and distribute verbatim or modified
+copies of this license document, and changing it is allowed as long
+as the following conditions are met:
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+            TERMS AND CONDITIONS FOR COPYING, DISTRIBUTION AND MODIFICATION
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+            0. You may copy and distribute verbatim copies of the Program's
+              source code as you receive it, in any medium, provided that you
+              conspicuously and appropriately publish on each copy an
+              appropriate copyright notice and disclaimer of warranty; keep
+              intact all the notices that refer to this License and the
+              absence of any warranty; and give any other recipients of the
+              Program's source code a copy of this License along with the
+              Program.
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+              You may charge a fee for the physical act of transferring
+              a copy, and you may at your option offer warranty protection
+              in exchange for a fee.
+
+            1. You may modify your copy or copies of the Program or any
+              portion of it, thus forming a work based on the Program, and
+              copy and distribute such modifications or work under the
+              terms of Section 1 above, provided that you also meet all of
+              the following conditions:
+
+              a) You must cause the modified files to carry prominent
+                notices that you changed the files and the date of any
+                change.
+
+              b) You must cause the modified files to carry all
+                notices that refer to this License and the absence of any
+                warranty, and any other similar notices that are required
+                to appear in the modified files.
+
+              c) You must license the entire work, as a whole, to
+                whoever receives it, at no charge, under the terms of this
+                License. (If your modified program normally reads or modifies
+                a file, such as a kernel of an operating system where it
+                is a matter of customary practice for applications to do so,
+                you may distribute the source code for the file under the
+                terms of this License, or, if a library, under the terms
+                of the GNU Lesser General Public License version 3.0; or
+              d) If distribution of the modified program occurs by offering
+                access to copy from a designated place, you may offer
+                equivalent access to copy the source code from the same
+                place.
+
+            2. You may modify your copy or copies of the Program or any
+              portion of it, thus forming a work based on the Program, and
+              copy and distribute such modifications or work under the
+              terms of Section 1 above, provided that you also meet all of
+              the following conditions:
+
+              a) You must cause the whole modified work to be licensed
+                at no charge to all third parties. (Distributors that
+                receive copies from you, or your customers, will not be
+                able to charge any fee for the act of transferring a copy,
+                or for support, or for warranty.)
+
+              b) You must cause the whole modified work, when started
+                running in normal operation, to display or otherwise make
+                an appropriate notice including an appropriate copyright
+                notice and the disclaimer of warranty; the notice must be
+                displayed to the user in the ordinary course of operation,
+                and must be in a form understandable by users.
+
+              c) You must retain all notices that refer to this License
+                and the absence of any warranty.
+
+              d) You must provide certain information regarding the
+                license which must be supplied with the Program. In addition,
+                you must do one of the following:
+
+                   1. Cause the whole modified work to be licensed at no
+                     charge to all third parties, as in item 2.a above.
+
+                   2. In addition to the terms of item 2.a above, you
+                     must cause any Corresponding Source that you distribute
+                     to be accompanied by the information you received
+                     regarding the license for the original work. (The
+                     requirements of item 2.a and 2.b may be met at either
+                     time of the initial receipt of the Program, or at the
+                     time of the user's first signing of the Program.)
+
+            3. You may copy and distribute the Program (or a work based on
+              it, under Section 1 or 2) in object code or executable form
+              under the terms of Sections 1 and 2 above, provided that you
+              also do the following:
+
+              a) You must cause the whole Program to be licensed at no
+                charge to all third parties. (Distributors that receive
+                copies from you, or your customers, will not be able to
+                charge any fee for the act of transferring a copy, or for
+                support, or for warranty.)
+
+              b) You must cause any correspondence that you send to
+                recipients about the Program to include a copy of this
+                license or a written offer to provide a copy. Any
+                correspondence that you send about the Program must be
+                in a form understandable by users.
+
+              c) You must provide, in any legal form, the available
+                Corresponding Source for the Program. If distribution of
+                copy is made by offering access to copy from a designated
+                place, then offer equivalent access to copy the source
+                code from the same place.
+
+              d) Verify that the user has received a copy of this License,
+                or that you have a good faith belief that the user has
+                received a copy of this License. You are advised, but not
+                required, to invite the user to join the Free Software
+                Foundation.
+
+            4. You may not copy, sublicense, or distribute the Program
+              except as expressly provided under this License. Any attempt
+              otherwise to copy, sublicense or distribute the Program is
+              void, and will automatically terminate your rights under
+              this License. However, parties who have received copies
+              from you under this License will not have their licenses
+              terminated if they remain in compliance.
+
+             5. You are not required to accept this License, since you have
+              not signed it. However, nothing else grants you permission to
+              modify or distribute the Program or its derivative works. These
+              actions are prohibited by law if you do not accept this License.
+              Therefore, by modifying or distributing the Program (or any work
+              based on the Program), you indicate your acceptance of this
+              License to do so, and all its terms and conditions for copying,
+              distribution or modification.
+
+             6. Each time you redistribute the Program (or any work based on
+               the Program), the recipient automatically receives a license
+               from the original licensor to copy, modify, or distribute the
+               Program subject to these terms and conditions. You may not
+               impose any further restrictions on the recipients' exercise
+               of the rights granted herein.
+
+             7. Because the Program is licensed free of charge, there is no
+              warranty for the Program, to the extent permitted by applicable
+              law. Except when otherwise stated in writing, the Licensor
+              provides the Program "AS IS" without warranty of any kind,
+              either expressed or implied, including, without limitation, the
+              implied warranties of MERCHANTABILITY and FITNESS FOR A
+              PARTICULAR PURPOSE. The entire risk as to the quality and
+              performance of the Program is with you. Should the Program
+              prove defective, you assume the cost of all necessary repair,
+              correction, or correction.
+
+            8. Nothing in this License is intended to induce you to infringe
+              any patents or other property right claims, or to contest
+              validity of any such claims. If infringement arises as a
+              consequence of distributing the Program, or the use or
+              operation of the Program to this point, any recipient may
+              seek indemnification from any party who distributes the Program
+              or modifies it, or any party associated with the distribution
+              or modification of the Program by conveying to that party a
+              copy of this License along with the Program.
+
+            9. If the distribution and/or use of the Program is restricted
+              in certain countries by letters patents or by the terms of
+              other agreements, any party who distributes the Program may be
+              required to notify and make an arrangement with the Free Software
+              Foundation, should such country's laws so require, in order to
+              continue to distribute the Program. This is only necessary
+              when the distribution or use of the Program is so restricted.
+
+           10. If any portion of the terms and conditions contained in this
+             License is found to be unenforceable or otherwise invalid, such
+             condition shall be deemed severable and shall not affect the
+             validity of the remaining terms and conditions.
+
+          11. The Free Software Foundation may publish revised and/or new
+              versions of the GNU General Public License from time to time.
+              Such new versions will be similar in spirit to the present
+              version, but may differ in detail. To use a version other
+              than version 3 of the License, to the extent that it is not
+              available, you must indicate your version selection in the
+              source code. You also have the option of following the terms
+              and conditions of this License or of any later version published
+              by the Free Software Foundation.
+
+         END OF TERMS AND CONDITIONS
