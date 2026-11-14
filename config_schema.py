@@ -5,7 +5,7 @@ file does not import Hermes internals.
 """
 
 CONFIG_SCHEMA = {
-    "name": "mnemos",
+    "name": "mnemos-sui",
     "label": "Mnemos",
     "storage": "flat_json",
     "docs_url": "https://github.com/bugnarokdev/mnemos/blob/main/docs/en/configuration.md",

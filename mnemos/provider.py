@@ -57,7 +57,7 @@ class MnemosProvider(MemoryProvider):
 
     @property
     def name(self) -> str:
-        return "mnemos"
+        return "mnemos-sui"
 
     def is_available(self) -> bool:
         return bool(get_secret("MNEMOS_SECRET"))

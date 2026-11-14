@@ -35,7 +35,7 @@ DEFAULTS = {
 
 
 def load_file_config(hermes_home: str | os.PathLike[str]) -> dict[str, Any]:
-    path = Path(hermes_home) / "mnemos" / "config.json"
+    path = Path(hermes_home) / "mnemos-sui" / "config.json"
     stored: dict[str, Any] = {}
     if path.is_file():
         loaded = json.loads(path.read_text(encoding="utf-8"))
@@ -49,7 +49,7 @@ def load_file_config(hermes_home: str | os.PathLike[str]) -> dict[str, Any]:
 
 
 def save_file_config(hermes_home: str | os.PathLike[str], values: dict[str, Any]) -> None:
-    path = Path(hermes_home) / "mnemos" / "config.json"
+    path = Path(hermes_home) / "mnemos-sui" / "config.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     current: dict[str, Any] = {}
     if path.is_file():
